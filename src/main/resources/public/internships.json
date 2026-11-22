@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-21T20:07:49.326Z",
+  "generatedAt": "2026-11-22T20:22:52.278Z",
   "source": "https://github.com/SimplifyJobs/Summer2027-Internships",
   "sources": [
     {
@@ -14,6 +14,104 @@
     }
   ],
   "listings": [
+    {
+      "company": "Neogen",
+      "role": "Embedded Systems Engineer Intern",
+      "location": "Oakdale, MN",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "N/A"
+      ],
+      "degrees": [
+        "Bachelor's",
+        "Master's"
+      ],
+      "experienceLevel": "Intermediate",
+      "url": "https://neogen.wd5.myworkdayjobs.com/neogencareers/job/Oakdale/Software-or-Firmware-Engineer-Intern_REQ-11064",
+      "postedAt": "2026-11-22T15:17:25.000Z",
+      "source": "simplify",
+      "region": "United States",
+      "countries": [
+        "US"
+      ],
+      "regions": [
+        "Minnesota"
+      ]
+    },
+    {
+      "company": "Neros Technologies",
+      "role": "Firmware/Embedded Software Engineer Intern",
+      "location": "Torrance, CA",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Summer 2027"
+      ],
+      "degrees": [
+        "Bachelor's",
+        "Master's"
+      ],
+      "experienceLevel": "Intermediate",
+      "url": "https://job-boards.greenhouse.io/nerostechnologies/jobs/5278981007",
+      "postedAt": "2026-11-22T01:46:05.000Z",
+      "source": "simplify",
+      "region": "United States",
+      "countries": [
+        "US"
+      ],
+      "regions": [
+        "California"
+      ]
+    },
+    {
+      "company": "Neros Technologies",
+      "role": "Electrical Engineer Intern",
+      "location": "Torrance, CA",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Summer 2027"
+      ],
+      "degrees": [
+        "Bachelor's"
+      ],
+      "experienceLevel": "Junior",
+      "url": "https://job-boards.greenhouse.io/nerostechnologies/jobs/5273149007",
+      "postedAt": "2026-11-21T22:38:17.000Z",
+      "source": "simplify",
+      "region": "United States",
+      "countries": [
+        "US"
+      ],
+      "regions": [
+        "California"
+      ]
+    },
+    {
+      "company": "Neros Technologies",
+      "role": "Autonomy Intern",
+      "location": "Torrance, CA",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Summer 2027"
+      ],
+      "degrees": [
+        "Bachelor's"
+      ],
+      "experienceLevel": "Junior",
+      "url": "https://job-boards.greenhouse.io/nerostechnologies/jobs/5273167007",
+      "postedAt": "2026-11-21T22:38:00.000Z",
+      "source": "simplify",
+      "region": "United States",
+      "countries": [
+        "US"
+      ],
+      "regions": [
+        "California"
+      ]
+    },
     {
       "company": "Convverge",
       "role": "Junior Developer Co-op",
@@ -2433,100 +2531,6 @@
       ]
     },
     {
-      "company": "FieldPulse",
-      "role": "Data Migration Intern",
-      "location": "Dallas, TX",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "N/A"
-      ],
-      "degrees": [
-        "Bachelor's"
-      ],
-      "experienceLevel": "Junior",
-      "url": "https://ats.rippling.com/fieldpulse/jobs/a409a953-f958-495b-b021-8a90ef7adb3f",
-      "postedAt": "2026-11-20T23:05:35.000Z",
-      "source": "simplify",
-      "region": "United States",
-      "countries": [
-        "US"
-      ],
-      "regions": [
-        "Texas"
-      ]
-    },
-    {
-      "company": "VanEck",
-      "role": "Business Intelligence Intern",
-      "location": "NYC",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Summer 2026"
-      ],
-      "degrees": [],
-      "experienceLevel": "Junior",
-      "url": "https://vaneck.rec.pro.ukg.net/VAN1502VEAC/JobBoard/9158c56d-61c9-447f-98b1-4ba0b04ca31d/OpportunityDetail?opportunityId=138d23f1-aadf-46e5-9efa-be0bdd2bd979",
-      "postedAt": "2026-11-20T23:03:33.000Z",
-      "source": "simplify",
-      "region": "United States",
-      "countries": [
-        "US"
-      ],
-      "regions": [
-        "New York"
-      ]
-    },
-    {
-      "company": "VanEck",
-      "role": "ETF Product Intern",
-      "location": "NYC",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Summer 2026"
-      ],
-      "degrees": [
-        "Bachelor's"
-      ],
-      "experienceLevel": "Junior",
-      "url": "https://vaneck.rec.pro.ukg.net/VAN1502VEAC/JobBoard/9158c56d-61c9-447f-98b1-4ba0b04ca31d/OpportunityDetail?opportunityId=185d986f-8f9f-40ac-bf05-a26e3aa02f9e",
-      "postedAt": "2026-11-20T23:03:32.000Z",
-      "source": "simplify",
-      "region": "United States",
-      "countries": [
-        "US"
-      ],
-      "regions": [
-        "New York"
-      ]
-    },
-    {
-      "company": "Intuitive Surgical",
-      "role": "Data Engineer Intern",
-      "location": "Sunnyvale, CA",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Summer 2026"
-      ],
-      "degrees": [
-        "Bachelor's"
-      ],
-      "experienceLevel": "Junior",
-      "url": "https://jobs.smartrecruiters.com/Intuitive/744000162832659",
-      "postedAt": "2026-11-20T22:56:57.000Z",
-      "source": "simplify",
-      "region": "United States",
-      "countries": [
-        "US"
-      ],
-      "regions": [
-        "California"
-      ]
-    },
-    {
       "company": "Method",
       "role": "Product Management Intern",
       "location": "Remote in USA, Santa Clara, CA, Charlotte, NC, NYC, Remote in Canada",
@@ -3251,29 +3255,6 @@
       ]
     },
     {
-      "company": "Angel Host",
-      "role": "AI Product Engineer Intern Co-op",
-      "location": "Montreal, QC, Canada",
-      "workMode": "In-person",
-      "isCoop": true,
-      "terms": [
-        "Winter 2026",
-        "Winter 2027"
-      ],
-      "degrees": [],
-      "experienceLevel": "Junior",
-      "url": "https://angelhost.bamboohr.com/careers/123/",
-      "postedAt": "2026-11-17T07:26:40.000Z",
-      "source": "simplify",
-      "region": "Canada",
-      "countries": [
-        "CA"
-      ],
-      "regions": [
-        "Quebec"
-      ]
-    },
-    {
       "company": "Birdseye Security Solutions",
       "role": "Software Developer Intern",
       "location": "Mississauga, ON, Canada",
@@ -3359,6 +3340,48 @@
       ],
       "regions": [
         "British Columbia"
+      ]
+    },
+    {
+      "company": "Angel Host",
+      "role": "AI Product Engineer Intern Co-op",
+      "location": "Montreal, QC",
+      "workMode": "In-person",
+      "isCoop": true,
+      "terms": [],
+      "degrees": [],
+      "experienceLevel": "",
+      "url": "https://angelhost.bamboohr.com/careers/123/",
+      "postedAt": "2026-11-17T00:00:00.000Z",
+      "source": "canadian-tech-internships",
+      "region": "Canada",
+      "countries": [
+        "CA"
+      ],
+      "regions": [
+        "Quebec"
+      ]
+    },
+    {
+      "company": "OLG",
+      "role": "Forensic Investigations Intern",
+      "location": "Sault Ste. Marie, ON, Canada",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Winter 2027"
+      ],
+      "degrees": [],
+      "experienceLevel": "Junior",
+      "url": "https://olg.wd3.myworkdayjobs.com/Careers-Students/job/Sault-Ste-Marie-Ontario-Canada/Student---Forensic-Investigations_R26_00701",
+      "postedAt": "2026-11-17T00:00:00.000Z",
+      "source": "simplify",
+      "region": "Canada",
+      "countries": [
+        "CA"
+      ],
+      "regions": [
+        "Ontario"
       ]
     },
     {
@@ -3455,6 +3478,31 @@
       ]
     },
     {
+      "company": "Lumentum",
+      "role": "AI Engineer Co-op Intern",
+      "location": "Ottawa, ON, Canada",
+      "workMode": "In-person",
+      "isCoop": true,
+      "terms": [
+        "Winter 2027"
+      ],
+      "degrees": [
+        "Bachelor's",
+        "Master's"
+      ],
+      "experienceLevel": "Intermediate",
+      "url": "https://lumentum.wd5.myworkdayjobs.com/LITE/job/Canada---Ottawa-Bill-Leathem/AI-Engineer---Co-op-Intern_20261778",
+      "postedAt": "2026-11-16T00:00:00.000Z",
+      "source": "simplify",
+      "region": "Canada",
+      "countries": [
+        "CA"
+      ],
+      "regions": [
+        "Ontario"
+      ]
+    },
+    {
       "company": "IPEX",
       "role": "Manufacturing Excellence Co-op",
       "location": "Oakville, ON, Canada",
@@ -3546,52 +3594,6 @@
       ],
       "regions": [
         "Ontario"
-      ]
-    },
-    {
-      "company": "Helcim",
-      "role": "Data Intern",
-      "location": "Calgary, AB, Canada",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Summer 2026"
-      ],
-      "degrees": [
-        "Bachelor's"
-      ],
-      "experienceLevel": "Junior",
-      "url": "https://helcim.careers.hibob.com/jobs/aa77ff61-8d21-4cef-a633-9960bde8ca3a",
-      "postedAt": "2026-11-13T20:56:41.000Z",
-      "source": "simplify",
-      "region": "Canada",
-      "countries": [
-        "CA"
-      ],
-      "regions": [
-        "Alberta"
-      ]
-    },
-    {
-      "company": "Seaspan",
-      "role": "Data Engineering Intern (Winter 2027)",
-      "location": "Vancouver, BC",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Winter 2027"
-      ],
-      "degrees": [],
-      "experienceLevel": "",
-      "url": "https://hckz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/9156",
-      "postedAt": "2026-11-13T00:00:00.000Z",
-      "source": "canadian-tech-internships",
-      "region": "Canada",
-      "countries": [
-        "CA"
-      ],
-      "regions": [
-        "British Columbia"
       ]
     }
   ]
