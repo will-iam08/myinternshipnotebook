@@ -10,7 +10,7 @@
 [![Deploy CI](https://github.com/will-iam08/myinternshipnotebook/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/will-iam08/myinternshipnotebook/actions/workflows/deploy-pages.yml)
 [![Daily Openings](https://github.com/will-iam08/myinternshipnotebook/actions/workflows/update-internships.yml/badge.svg)](https://github.com/will-iam08/myinternshipnotebook/actions/workflows/update-internships.yml)
 [![Zero Runtime Dependencies](https://img.shields.io/badge/Dependencies-Zero%20Runtime-137333)](./package.json)
-[![Browser Extension](https://img.shields.io/badge/Extension-Chrome%20%7C%20Edge%20%7C%20Firefox%20MV3-2563eb)](./docs/browser-extension.md)
+[![Browser Extension](https://img.shields.io/badge/Extension-Chrome%20%7C%20Edge%20%7C%20Firefox%20MV3-2563eb)](./docs/guides/browser-extension.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
 [Launch App](https://internshipnotebook.app/) · [It Can Be Your...](#it-can-be-your) · [Features](#features) · [Editions & Sync](#editions-and-sync) · [Quick Start](#quick-start) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Privacy](https://internshipnotebook.app/privacy.html)
@@ -26,7 +26,7 @@
     <a href="https://internshipnotebook.app/">Open the live app</a> ·
     <a href="https://internshipnotebook.app/#/welcome">Explore the interactive demo</a> ·
     <a href="https://internshipnotebook.app/#/build">Build your own workspace</a> ·
-    <a href="./docs/browser-extension.md">Install the Save Jobs extension</a>
+    <a href="./docs/guides/browser-extension.md">Install the Save Jobs extension</a>
   </sub>
 </p>
 
@@ -78,7 +78,7 @@ Every starter page uses invented placeholder companies clearly labeled as exampl
 ### Job Discovery & 1-Click Capture
 - **Daily Global Openings Feed:** Browse fresh roles right inside Today, filter by **All**, **Canada**, **United States**, **Remote**, or **International** (with live counts), search role/company/location, filter by term/degree/co-op eligibility, and clip into a new page in one click.
 - **Quick Fill Job Clipper:** Paste any job URL or posting text (Greenhouse, Lever, Ashby, Workday, LinkedIn, SmartRecruiters, Simplify) and automatically extract structured `JobPosting` metadata, location, closing date, and technical skills.
-- **Save Jobs Browser Extension (`Chrome`, `Edge`, `Firefox`):** Click the toolbar button (or press `Alt+Shift+S`) on any posting to inspect parsed fields, keep a backup of the job description in notes before the listing expires, and send it to your notebook via the client-side `#/new` hash route. See [docs/browser-extension.md](./docs/browser-extension.md).
+- **Save Jobs Browser Extension (`Chrome`, `Edge`, `Firefox`):** Click the toolbar button (or press `Alt+Shift+S`) on any posting to inspect parsed fields, keep a backup of the job description in notes before the listing expires, and send it to your notebook via the client-side `#/new` hash route. See [docs/guides/browser-extension.md](./docs/guides/browser-extension.md).
 - **Universal Spreadsheet & Backup Import:** Bring trackers from Google Sheets, Notion, Excel, Simplify, or WaterlooWorks (`CSV`, `TSV`, or `JSON`). Smart header mapping normalizes stages, validates calendar dates and `http(s)://` links identically to typed entries, previews changes first, and supports full batch undo.
 
 ### Interview Prep & Timed Mock Coach
@@ -220,10 +220,13 @@ myinternshipnotebook/
 ├── scripts/                          # Static builder, extension packer, syntax checker, demo recorder & feed updater
 ├── supabase/                         # Optional cloud sync SQL schemas & privacy-safe usage telemetry docs
 ├── tests/                            # 29 Node unit suites (tests/unit/) + 20 Playwright E2E specs (tests/e2e/)
-├── docs/                             # Product decisions, extension guide, asset artwork (docs/assets/)
+├── docs/
+│   ├── assets/                       # README icon, editorial showcase banner & interactive tour GIF
+│   ├── guides/                       # Product decisions, browser extension guide & Play launch checklist
+│   └── archive/                      # Superseded pre-Supabase design & onboarding notes
 ├── CONTRIBUTING.md                   # Contributor workflow & design rules
 ├── LICENSE                           # MIT License
-└── .github/workflows/                # CI checks, GitHub Pages deploy & daily openings updater
+└── .github/                          # CI workflows, issue templates & PR template
 ```
 
 ### Engineering Highlights
@@ -279,7 +282,7 @@ myinternshipnotebook/
 
 ## Contributing
 
-Contributions, bug fixes, job-board parser improvements, and accessibility refinements are always welcome! Read [CONTRIBUTING.md](./CONTRIBUTING.md) and [docs/product-decisions.md](./docs/product-decisions.md) before opening a pull request, or browse open [Issues](https://github.com/will-iam08/myinternshipnotebook/issues).
+Contributions, bug fixes, job-board parser improvements, and accessibility refinements are always welcome! Read [CONTRIBUTING.md](./CONTRIBUTING.md) and [docs/guides/product-decisions.md](./docs/guides/product-decisions.md) before opening a pull request, or browse open [Issues](https://github.com/will-iam08/myinternshipnotebook/issues).
 
 ---
 

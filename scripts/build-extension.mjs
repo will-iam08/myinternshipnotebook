@@ -4,7 +4,7 @@
  *
  * The extension reads job pages with the notebook's own job clipper, so instead of keeping a
  * second copy in extension/, this copies js/clipper.js and js/domain.js into _extension/lib/.
- * See docs/browser-extension.md.
+ * See docs/guides/browser-extension.md.
  */
 import { execFileSync } from "node:child_process";
 import { cp, readFile, rm, writeFile } from "node:fs/promises";

@@ -54,7 +54,7 @@ Thanks for helping improve **My Internship Notebook**! Whether you are fixing an
 
 ## Engineering Conventions
 
-Before making UI or data changes, read [docs/product-decisions.md](./docs/product-decisions.md). Key rules to keep green in CI:
+Before making UI or data changes, read [docs/guides/product-decisions.md](./docs/guides/product-decisions.md). Key rules to keep green in CI:
 
 - **Zero runtime dependencies:** Do not introduce runtime npm packages, frameworks, build bundlers for app code, CDNs, or external fonts.
 - **Dual storage compatibility:** Changes to application fields or validation must work across both `browserApi` and `serverApi`, validate cleanly inside [`src/main/resources/public/js/domain.js`](./src/main/resources/public/js/domain.js) (including `sanitizeImportedEntry`), and keep `data/*.tsv` loading backward compatible.

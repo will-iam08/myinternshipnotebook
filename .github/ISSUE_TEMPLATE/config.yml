@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Product Decisions & Conventions
+    url: https://github.com/will-iam08/myinternshipnotebook/blob/main/docs/guides/product-decisions.md
+    about: Review architecture rules (zero runtime deps, privacy, stage palette) before proposing major changes.
