@@ -134,26 +134,20 @@ test("refresh after a resize re-measures and re-checks fit", () => {
 
   wrapper.offsetHeight = 3600;
   resize.callback();
-  step();
+  step(); // deferred re-measure
+  step(); // render
   assert.equal(progress(), "0.2500");
 });
 
-test("inactive scenes are not rendered", () => {
-  const { scenes, win, wrapper, updates, listeners, frames, intersection, resize, progress, activate, engineFrame, step } = createHarness();
-  scenes.render(1800);
+test("scenes far from the viewport are not rendered, and destroy cleans up", () => {
+  const { scenes, updates, listeners, frames, intersection, resize, progress, engineFrame } = createHarness();
+  scenes.render(9000);
   assert.equal(progress(), undefined);
-  activate();
-  assert.ok(Object.hasOwn(wrapper.dataset, "sceneActive"));
-  win.scrollY = 1400;
-  listeners.get("scroll")();
   engineFrame()(1800);
   assert.equal(frames.size, 0);
   assert.equal(progress(), "0.5000");
   assert.equal(updates.length, 1);
-
-  activate(false);
-  assert.equal(Object.hasOwn(wrapper.dataset, "sceneActive"), false);
-  scenes.render(2400);
+  scenes.render(9000);
   assert.equal(updates.length, 1);
   scenes.destroy();
   assert.equal(engineFrame(), undefined);
@@ -161,6 +155,12 @@ test("inactive scenes are not rendered", () => {
   assert.equal(frames.size, 0);
   assert.equal(intersection.targets.size, 0);
   assert.equal(resize.targets.size, 0);
+});
+
+test("a jump straight into a scene renders it before any intersection callback arrives", () => {
+  const { scenes, progress } = createHarness();
+  scenes.render(1800);
+  assert.equal(progress(), "0.5000");
 });
 
 test("setProgress overrides until release", () => {
@@ -221,4 +221,21 @@ test("an engine frame renders scenes in that same frame, not one frame later", (
   engineFrame()(1800);
   assert.equal(progress(), "0.5000");
   assert.equal(frames.size, 0);
+});
+
+test("setProgress renders an off-screen scene so test hooks and screenshots work anywhere", () => {
+  const { scenes, progress, step } = createHarness();
+  scenes.setProgress("feature", 0.25);
+  step();
+  assert.equal(progress(), "0.2500");
+});
+
+test("resize observer callbacks re-measure on the next frame, never inside the callback", () => {
+  const { wrapper, resize, step } = createHarness({ stageHeight: 720 });
+  assert.equal(wrapper.dataset.pinned, "false");
+  wrapper.querySelector("[data-scene-stage]").scrollHeight = 600;
+  resize.callback();
+  assert.equal(wrapper.dataset.pinned, "false");
+  step();
+  assert.equal(wrapper.dataset.pinned, "true");
 });

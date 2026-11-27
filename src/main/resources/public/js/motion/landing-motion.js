@@ -133,7 +133,15 @@ export function initLandingMotion({ shell, win = window }) {
     measure();
   }
 
-  const resizeObserver = new win.ResizeObserver(measure);
+  // Measuring writes --landing-header-h, which can resize the page: defer it out of the observer callback.
+  let measureFrame = null;
+  const resizeObserver = new win.ResizeObserver(() => {
+    if (measureFrame !== null) return;
+    measureFrame = win.requestAnimationFrame(() => {
+      measureFrame = null;
+      measure();
+    });
+  });
   resizeObserver.observe(doc.documentElement);
   if (header) resizeObserver.observe(header);
   win.addEventListener("scroll", onScroll, { passive: true });
@@ -180,6 +188,7 @@ export function initLandingMotion({ shell, win = window }) {
       stopMotionLayers();
       for (const cleanup of cleanups) cleanup();
       if (frameId !== null) win.cancelAnimationFrame(frameId);
+      if (measureFrame !== null) win.cancelAnimationFrame(measureFrame);
       root.classList.remove("motion-engine", "motion-hold");
       shell.classList.remove("motion-ready");
       header?.classList.remove("landing-header-scrolled");

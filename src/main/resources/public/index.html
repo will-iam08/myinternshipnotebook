@@ -81,9 +81,9 @@
         <!-- 1. Hero Section (full viewport height, above the fold) -->
         <section class="landing-hero" id="hero" aria-labelledby="hero-title">
           <div class="landing-hero-inner">
-            <div class="landing-hero-copy">
+            <div class="landing-hero-copy" data-depth="0.9">
               <p class="eyebrow landing-eyebrow">Private Student &amp; Co-op Application Tracker</p>
-              <h1 class="landing-hero-title" id="hero-title">Every internship application, one calm notebook.</h1>
+              <h1 class="landing-hero-title" id="hero-title" data-reveal="words">Every internship application, <span class="kw">one calm notebook.</span></h1>
               <p class="landing-hero-sub" id="hero-sub">Built for students and co-op applicants to track deadlines, stages, and interview prep in a private, offline-ready workspace with one-click job clipping.</p>
               <div class="landing-hero-actions">
                 <a class="button primary large landing-btn-primary" href="#signup" data-scroll-to="signup" data-auth-mode-trigger="signup">
@@ -144,217 +144,254 @@
           <div class="landing-section-inner">
             <header class="landing-section-head">
               <p class="eyebrow">Built for high-volume recruiting seasons</p>
-              <h2 class="landing-section-title" id="features-title">Everything your spreadsheet is missing, with none of the clutter.</h2>
+              <h2 class="landing-section-title" id="features-title" data-reveal="words">Everything your spreadsheet is missing, with none of the clutter.</h2>
               <p class="landing-section-sub">Ordered by what saves students the most time every day, from instant job capture to timed mock interviews.</p>
             </header>
 
-            <div class="features-list" id="features-list">
-              <!-- Feature 1: One-Click Job Clipper and Paste Autofill -->
-              <article class="feature-card feature-row" data-feature-id="clipper">
+          </div>
+
+          <div class="features-list scenes" id="features-list">
+            <!-- Feature 1: One-Click Job Clipper and Paste Autofill -->
+            <div class="scene" data-scene="clipper" data-canvas="light">
+              <article class="feature-card feature-row" data-feature-id="clipper" data-scene-stage>
                 <div class="feature-copy">
-                  <div class="feature-meta">
+                  <div class="feature-meta" data-reveal>
                     <span class="feature-icon" aria-hidden="true" data-icon="sparkle"></span>
                     <span class="feature-badge">01 · Fastest daily capture</span>
                   </div>
-                  <h3 class="feature-title">One-Click Job Clipper and Paste Autofill</h3>
-                  <p class="feature-description">Save openings from Greenhouse, Lever, Ashby, Workday, LinkedIn, and Simplify in a single click. Paste any job URL or posting snippet to fill company, role, location, source, and technical skills automatically. Spend your energy tailoring resumes instead of copying fields by hand.</p>
-                  <ul class="feature-annotations-list" aria-label="Key highlights">
+                  <h3 class="feature-title" data-reveal="words"><span class="kw">One-Click</span> Job Clipper and <span class="kw">Paste Autofill</span></h3>
+                  <p class="feature-description" data-reveal>Save openings from Greenhouse, Lever, Ashby, Workday, LinkedIn, and Simplify in a single click. Paste any job URL or posting snippet to fill company, role, location, source, and technical skills automatically. Spend your energy tailoring resumes instead of copying fields by hand.</p>
+                  <ul class="feature-annotations-list" aria-label="Key highlights" data-reveal>
                     <li><span data-icon="check"></span><span>Auto-detects ATS &amp; job board URLs</span></li>
                     <li><span data-icon="check"></span><span>Extracts skills &amp; location instantaneously</span></li>
                   </ul>
                 </div>
-                <figure class="feature-visual" role="img" aria-label="Annotated preview of the Quick Fill job clipper extracting Stripe, Software Engineer Intern, Seattle, and Python from a pasted Greenhouse URL.">
-                  <div class="annotated-screen">
-                    <div class="screen-bar">
-                      <span class="screen-title">Quick Fill Clipper</span>
-                      <span class="screen-Annotation-tag">1-Click Autofill</span>
-                    </div>
-                    <div class="screen-body">
-                      <div class="screen-input-mock">
-                        <code>https://boards.greenhouse.io/stripe/jobs/98765</code>
-                        <span class="screen-pill-accent">Filled 5 fields</span>
+                <figure class="feature-visual scene-visual" role="img" aria-label="Annotated preview of the Quick Fill job clipper extracting Stripe, Software Engineer Intern, Seattle, and Python from a pasted Greenhouse URL.">
+                  <div class="sv-stage" aria-hidden="true">
+                    <div class="sv-card sv-browser">
+                      <div class="sv-bar"><i></i><i></i><i></i><code>boards.greenhouse.io/stripe/jobs/98765</code>
+                        <span class="sv-clip"><span class="sv-clip-label" data-counter="clip">Clip</span><span class="sv-ripple"></span></span>
                       </div>
-                      <div class="screen-grid-mock">
-                        <div class="screen-field-mock"><small>Company</small><strong>Stripe</strong></div>
-                        <div class="screen-field-mock"><small>Role</small><strong>Software Engineer Intern</strong></div>
-                        <div class="screen-field-mock"><small>Location</small><strong>Seattle, WA</strong></div>
-                        <div class="screen-field-mock"><small>Skills</small><strong>Python, Go, SQL</strong></div>
+                      <div class="sv-body">
+                        <strong class="sv-posting-title">Software Engineer Intern</strong>
+                        <span class="sv-line w80"></span><span class="sv-line w60"></span>
+                        <div class="sv-chips">
+                          <span class="sv-chip" style="--i:0"><small>Company</small>Stripe</span>
+                          <span class="sv-chip" style="--i:1"><small>Role</small>SWE Intern</span>
+                          <span class="sv-chip" style="--i:2"><small>Location</small>Seattle, WA</span>
+                          <span class="sv-chip" style="--i:3"><small>Skills</small>Python, Go, SQL</span>
+                        </div>
                       </div>
                     </div>
+                    <div class="sv-card sv-notebook">
+                      <div class="sv-notebook-head"><strong>Stripe</strong><span>Software Engineer Intern</span></div>
+                      <span class="sv-nrow" style="--i:0"><small>Company</small>Stripe</span>
+                      <span class="sv-nrow" style="--i:1"><small>Location</small>Seattle, WA</span>
+                      <span class="sv-nrow" style="--i:2"><small>Source</small>Greenhouse</span>
+                      <span class="sv-nrow" style="--i:3"><small>Skills</small>Python, Go, SQL</span>
+                      <svg class="sv-ring sv-capture" viewBox="0 0 52 52" data-final><circle class="sv-ring-track" cx="26" cy="26" r="21"/><circle class="sv-ring-arc" cx="26" cy="26" r="21" pathLength="100"/><path class="sv-ring-check" d="M17 27l6 6 12-13" pathLength="100"/></svg>
+                    </div>
+                    <svg class="sv-cursor" viewBox="0 0 44 44"><path d="M7 4v30l8-7.5 6 13.5 6-2.6-6-13.4h11z"/></svg>
                   </div>
                   <figcaption class="sr-only">Pasting a job URL populates company, role, location, source, and skills in one step.</figcaption>
                 </figure>
               </article>
+            </div>
 
-              <!-- Feature 2: Kanban Pipeline and Dated Stage History -->
-              <article class="feature-card feature-row feature-row-reverse" data-feature-id="pipeline">
+            <!-- Feature 2: Kanban Pipeline and Dated Stage History -->
+            <div class="scene" data-scene="pipeline" data-canvas="dark">
+              <article class="feature-card feature-row feature-row-reverse" data-feature-id="pipeline" data-scene-stage>
                 <div class="feature-copy">
-                  <div class="feature-meta">
+                  <div class="feature-meta" data-reveal>
                     <span class="feature-icon" aria-hidden="true" data-icon="board"></span>
                     <span class="feature-badge">02 · Visual stage tracking</span>
                   </div>
-                  <h3 class="feature-title">Kanban Pipeline and Dated Stage History</h3>
-                  <p class="feature-description">Move applications across Saved, Applied, Interview, Offer, and Rejected columns as your search progresses. Every stage change is stamped automatically on a dated timeline so you always know when you applied and when a recruiter replied. Filter by company, skill, or stage in real time on desktop or phone.</p>
-                  <ul class="feature-annotations-list" aria-label="Key highlights">
+                  <h3 class="feature-title" data-reveal="words"><span class="kw">Kanban Pipeline</span> and Dated Stage History</h3>
+                  <p class="feature-description" data-reveal>Move applications across Saved, Applied, Interview, Offer, and Rejected columns as your search progresses. Every stage change is stamped automatically on a dated timeline so you always know when you applied and when a recruiter replied. Filter by company, skill, or stage in real time on desktop or phone.</p>
+                  <ul class="feature-annotations-list" aria-label="Key highlights" data-reveal>
                     <li><span data-icon="check"></span><span>5 color-vision-safe pipeline stages</span></li>
                     <li><span data-icon="check"></span><span>Automatic dated move history</span></li>
                   </ul>
                 </div>
-                <figure class="feature-visual" role="img" aria-label="Annotated preview of the five-stage Kanban pipeline board with color-vision-checked stage badges and dated history stamps.">
-                  <div class="annotated-screen">
-                    <div class="screen-bar">
-                      <span class="screen-title">Pipeline Board</span>
-                      <span class="screen-Annotation-tag">Drag &amp; Drop + Touch</span>
+                <figure class="feature-visual scene-visual" role="img" aria-label="Annotated preview of the five-stage Kanban pipeline board with color-vision-checked stage badges and dated history stamps.">
+                  <div class="sv-stage" aria-hidden="true">
+                    <div class="sv-board sv-ghost"></div>
+                    <div class="sv-board">
+                      <div class="sv-col">
+                        <span class="pill st-APPLIED"><i></i>Applied (<b data-counter="applied">11</b>)</span>
+                        <div class="sv-kcard sv-drag"><strong>Shopify</strong><small>Backend Intern · Sent 3d ago</small></div>
+                        <div class="sv-kcard"><strong>Wealthsimple</strong><small>Data Intern · Sent 5d ago</small></div>
+                      </div>
+                      <div class="sv-col">
+                        <span class="pill st-INTERVIEW sv-bump"><i></i>Interview (<b data-counter="interview">4</b>)</span>
+                        <div class="sv-kcard"><strong>Linear</strong><small>Full-Stack Intern · Technical Thu</small></div>
+                        <div class="sv-slot"></div>
+                        <span class="sv-stamp" data-final>Moved to Interview · Today</span>
+                      </div>
+                      <div class="sv-col">
+                        <span class="pill st-OFFER"><i></i>Offer (2)</span>
+                        <div class="sv-kcard"><strong>Figma</strong><small>Product Design Intern · Offer</small></div>
+                      </div>
                     </div>
-                    <div class="screen-body screen-kanban-mock">
-                      <div class="kanban-col-mock">
-                        <span class="pill st-SAVED"><i></i>Saved (4)</span>
-                        <div class="kanban-card-mock"><strong>Figma</strong><small>Product Design Intern · Due Fri</small></div>
-                      </div>
-                      <div class="kanban-col-mock">
-                        <span class="pill st-APPLIED"><i></i>Applied (12)</span>
-                        <div class="kanban-card-mock"><strong>Shopify</strong><small>Backend Intern · Sent 3d ago</small></div>
-                      </div>
-                      <div class="kanban-col-mock">
-                        <span class="pill st-INTERVIEW"><i></i>Interview (3)</span>
-                        <div class="kanban-card-mock"><strong>Linear</strong><small>Full-Stack Intern · Technical Thu</small></div>
-                      </div>
-                    </div>
+                    <svg class="sv-cursor" viewBox="0 0 44 44"><path d="M7 4v30l8-7.5 6 13.5 6-2.6-6-13.4h11z"/></svg>
                   </div>
-                  <figcaption class="sr-only">Applications organized across Saved, Applied, and Interview columns with automatic timestamps.</figcaption>
+                  <figcaption class="sr-only">Applications organized across Applied, Interview, and Offer columns with automatic timestamps.</figcaption>
                 </figure>
               </article>
+            </div>
 
-              <!-- Feature 3: Universal Spreadsheet and Backup Import -->
-              <article class="feature-card feature-row" data-feature-id="import">
+            <!-- Feature 3: Universal Spreadsheet and Backup Import -->
+            <div class="scene" data-scene="import" data-canvas="light">
+              <article class="feature-card feature-row" data-feature-id="import" data-scene-stage>
                 <div class="feature-copy">
-                  <div class="feature-meta">
+                  <div class="feature-meta" data-reveal>
                     <span class="feature-icon" aria-hidden="true" data-icon="upload"></span>
                     <span class="feature-badge">03 · Zero switching cost</span>
                   </div>
-                  <h3 class="feature-title">Universal Spreadsheet and Backup Import</h3>
-                  <p class="feature-description">Bring your existing tracker from Google Sheets, Notion, Simplify, Excel, or WaterlooWorks without retyping a single row. Smart header detection maps columns, normalizes stages, and validates links automatically before anything is added. Full JSON and CSV exports ensure your records are always portable.</p>
-                  <ul class="feature-annotations-list" aria-label="Key highlights">
+                  <h3 class="feature-title" data-reveal="words">Universal <span class="kw">Spreadsheet</span> and <span class="kw">Backup Import</span></h3>
+                  <p class="feature-description" data-reveal>Bring your existing tracker from Google Sheets, Notion, Simplify, Excel, or WaterlooWorks without retyping a single row. Smart header detection maps columns, normalizes stages, and validates links automatically before anything is added. Full JSON and CSV exports ensure your records are always portable.</p>
+                  <ul class="feature-annotations-list" aria-label="Key highlights" data-reveal>
                     <li><span data-icon="check"></span><span>RFC 4180 CSV, TSV &amp; JSON support</span></li>
                     <li><span data-icon="check"></span><span>Lossless round-trip export &amp; undo</span></li>
                   </ul>
                 </div>
-                <figure class="feature-visual" role="img" aria-label="Annotated preview of universal CSV and TSV spreadsheet import mapping columns from Google Sheets, Notion, and Simplify.">
-                  <div class="annotated-screen">
-                    <div class="screen-bar">
-                      <span class="screen-title">Universal CSV &amp; TSV Importer</span>
-                      <span class="screen-Annotation-tag">Smart Column Mapping</span>
+                <figure class="feature-visual scene-visual" role="img" aria-label="Annotated preview of universal CSV and TSV spreadsheet import mapping columns from Google Sheets, Notion, and Simplify.">
+                  <div class="sv-stage" aria-hidden="true">
+                    <div class="sv-card sv-sheet">
+                      <div class="sv-csv-head"><code>tracker.csv</code><span>4 columns</span></div>
+                      <div class="sv-csv-row" style="--i:0"><code>"Employer"</code><b>Company</b></div>
+                      <div class="sv-csv-row" style="--i:1"><code>"Job Title"</code><b>Role</b></div>
+                      <div class="sv-csv-row" style="--i:2"><code>"Online Assessment"</code><b>Interview</b></div>
+                      <div class="sv-csv-row" style="--i:3"><code>"11/15/2026"</code><b>2026-11-15</b></div>
                     </div>
-                    <div class="screen-body">
-                      <div class="import-map-mock">
-                        <div class="import-map-row"><span>"Employer"</span><span class="import-arrow">-&gt;</span><strong>Company</strong></div>
-                        <div class="import-map-row"><span>"Job Title"</span><span class="import-arrow">-&gt;</span><strong>Role</strong></div>
-                        <div class="import-map-row"><span>"Online Assessment"</span><span class="import-arrow">-&gt;</span><span class="pill st-INTERVIEW"><i></i>Interview</span></div>
-                        <div class="import-map-row"><span>"11/15/2026"</span><span class="import-arrow">-&gt;</span><strong>2026-11-15</strong></div>
-                      </div>
+                    <div class="sv-card sv-tray">
+                      <div class="sv-tray-head"><strong>Notebook</strong><span class="sv-count" data-counter="import" data-final>48 imported</span></div>
+                      <div class="sv-icard" style="--i:0"><small>Company</small>Shopify</div>
+                      <div class="sv-icard" style="--i:1"><small>Role</small>Backend Intern</div>
+                      <div class="sv-icard" style="--i:2"><small>Stage</small><span class="pill st-INTERVIEW"><i></i>Interview</span></div>
+                      <div class="sv-icard" style="--i:3"><small>Applied</small>2026-11-15</div>
                     </div>
                   </div>
                   <figcaption class="sr-only">Spreadsheet headers and stage names map automatically into validated notebook entries.</figcaption>
                 </figure>
               </article>
+            </div>
 
-              <!-- Feature 4: Role-Matched Interview Prep and Timed Mock Sessions -->
-              <article class="feature-card feature-row feature-row-reverse" data-feature-id="interview">
+            <!-- Feature 4: Role-Matched Interview Prep and Timed Mock Sessions -->
+            <div class="scene" data-scene="interview" data-canvas="dark">
+              <article class="feature-card feature-row feature-row-reverse" data-feature-id="interview" data-scene-stage>
                 <div class="feature-copy">
-                  <div class="feature-meta">
+                  <div class="feature-meta" data-reveal>
                     <span class="feature-icon" aria-hidden="true" data-icon="check"></span>
                     <span class="feature-badge">04 · Walk in prepared</span>
                   </div>
-                  <h3 class="feature-title">Role-Matched Interview Prep and Timed Mock Sessions</h3>
-                  <p class="feature-description">Practice from a curated bank of 62 behavioral and technical questions matched to each application's role and stage. Run timed mock interviews with live STAR structure checks, filler-word detection, and speaking-pace feedback. Review your score trends and weakest areas before walking into the real call.</p>
-                  <ul class="feature-annotations-list" aria-label="Key highlights">
+                  <h3 class="feature-title" data-reveal="words"><span class="kw">Role-Matched</span> Interview Prep and <span class="kw">Timed Mock</span> Sessions</h3>
+                  <p class="feature-description" data-reveal>Practice from a curated bank of 62 behavioral and technical questions matched to each application's role and stage. Run timed mock interviews with live STAR structure checks, filler-word detection, and speaking-pace feedback. Review your score trends and weakest areas before walking into the real call.</p>
+                  <ul class="feature-annotations-list" aria-label="Key highlights" data-reveal>
                     <li><span data-icon="check"></span><span>62 role-aware practice questions</span></li>
                     <li><span data-icon="check"></span><span>Live STAR &amp; pacing feedback</span></li>
                   </ul>
                 </div>
-                <figure class="feature-visual" role="img" aria-label="Annotated preview of the timed mock interview workspace showing STAR structure coverage, speaking pace, and 88/100 readiness score.">
-                  <div class="annotated-screen">
-                    <div class="screen-bar">
-                      <span class="screen-title">Timed Mock Interview</span>
-                      <span class="screen-Annotation-tag">STAR + Pace Analysis</span>
+                <figure class="feature-visual scene-visual" role="img" aria-label="Annotated preview of the timed mock interview workspace showing STAR structure coverage, speaking pace, and 88/100 readiness score.">
+                  <div class="sv-stage" aria-hidden="true">
+                    <div class="sv-card sv-question">
+                      <small>Behavioral · Shopify Backend Intern</small>
+                      <strong>Tell me about a time you debugged a production issue.</strong>
                     </div>
-                    <div class="screen-body">
-                      <div class="mock-score-row">
-                        <div class="mock-score-badge"><strong>88</strong><small>/ 100</small></div>
-                        <div class="mock-score-details">
-                          <strong>Tell me about a time you debugged a production issue.</strong>
-                          <span>STAR structure complete · 138 words/min · 0 filler phrases</span>
-                        </div>
+                    <div class="sv-card sv-timer">
+                      <div class="sv-timer-head">
+                        <svg class="sv-ring sv-ready" viewBox="0 0 52 52"><circle class="sv-ring-track" cx="26" cy="26" r="21"/><circle class="sv-ring-arc" cx="26" cy="26" r="21" pathLength="100"/></svg>
+                        <span class="sv-score"><b data-counter="score">88</b><small>/ 100</small></span>
+                        <span class="sv-clock" data-counter="timer">01:45</span>
+                        <span class="sv-bars"><i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i></span>
                       </div>
+                      <div class="sv-star" style="--i:0"><span><b>S</b> Checkout outage during a flash sale</span></div>
+                      <div class="sv-star" style="--i:1"><span><b>T</b> Restore payments within the hour</span></div>
+                      <div class="sv-star" style="--i:2"><span><b>A</b> Traced a slow query, shipped a hotfix</span></div>
+                      <div class="sv-star" style="--i:3"><span><b>R</b> Errors fell 98% in 20 minutes</span></div>
+                      <span class="sv-summary" data-final><span data-counter="pace">138 wpm</span> · 0 filler phrases</span>
                     </div>
                   </div>
                   <figcaption class="sr-only">Mock interview scoring evaluates STAR structure, timing, filler words, and speaking pace.</figcaption>
                 </figure>
               </article>
+            </div>
 
-              <!-- Feature 5: Deadline Radar and Calendar Reminders -->
-              <article class="feature-card feature-row" data-feature-id="reminders">
+            <!-- Feature 5: Deadline Radar and Calendar Reminders -->
+            <div class="scene" data-scene="reminders" data-canvas="light">
+              <article class="feature-card feature-row" data-feature-id="reminders" data-scene-stage>
                 <div class="feature-copy">
-                  <div class="feature-meta">
+                  <div class="feature-meta" data-reveal>
                     <span class="feature-icon" aria-hidden="true" data-icon="calendar"></span>
                     <span class="feature-badge">05 · Never miss a deadline</span>
                   </div>
-                  <h3 class="feature-title">Deadline Radar and Calendar Reminders</h3>
-                  <p class="feature-description">See overdue items, upcoming application deadlines, and quiet applications that need a follow-up nudge on your Today page. Export a standard calendar file (.ics) to put every deadline and interview onto Google Calendar, Apple Calendar, or Outlook with two-stage alerts. Generate a self-addressed weekly email digest in one click.</p>
-                  <ul class="feature-annotations-list" aria-label="Key highlights">
+                  <h3 class="feature-title" data-reveal="words"><span class="kw">Deadline Radar</span> and Calendar <span class="kw">Reminders</span></h3>
+                  <p class="feature-description" data-reveal>See overdue items, upcoming application deadlines, and quiet applications that need a follow-up nudge on your Today page. Export a standard calendar file (.ics) to put every deadline and interview onto Google Calendar, Apple Calendar, or Outlook with two-stage alerts. Generate a self-addressed weekly email digest in one click.</p>
+                  <ul class="feature-annotations-list" aria-label="Key highlights" data-reveal>
                     <li><span data-icon="check"></span><span>One-click .ics calendar alerts</span></li>
                     <li><span data-icon="check"></span><span>7-day quiet application follow-up nudges</span></li>
                   </ul>
                 </div>
-                <figure class="feature-visual" role="img" aria-label="Annotated preview of the Today deadline radar and .ics calendar reminder export with 24-hour and 2-hour alerts.">
-                  <div class="annotated-screen">
-                    <div class="screen-bar">
-                      <span class="screen-title">Deadline Radar &amp; .ics Alerts</span>
-                      <span class="screen-Annotation-tag">24h &amp; 2h Reminders</span>
-                    </div>
-                    <div class="screen-body">
-                      <div class="agenda-mock-list">
-                        <div class="agenda-mock-item">
-                          <span class="pill st-INTERVIEW"><i></i>Tomorrow</span>
-                          <div><strong>Technical interview with Harbour Health</strong><small>Calendar alert set for 24h and 2h before</small></div>
-                        </div>
-                        <div class="agenda-mock-item">
-                          <span class="pill st-SAVED"><i></i>In 2 days</span>
-                          <div><strong>Apply to Northwind Labs</strong><small>Backend Developer Intern · Toronto</small></div>
-                        </div>
+                <figure class="feature-visual scene-visual" role="img" aria-label="Annotated preview of the Today deadline radar and .ics calendar reminder export with 24-hour and 2-hour alerts.">
+                  <div class="sv-stage" aria-hidden="true">
+                    <div class="sv-card sv-calendar">
+                      <div class="sv-cal-head"><strong>This week</strong><span data-counter="alerts">4 alerts</span></div>
+                      <div class="sv-cal-grid">
+                        <span>Mon<b>16</b></span><span>Tue<b>17</b><i class="sv-pin" style="--i:0"></i></span><span>Wed<b>18</b></span><span>Thu<b>19</b><i class="sv-pin" style="--i:1"></i></span><span>Fri<b>20</b><i class="sv-pin" style="--i:2"></i></span><span>Sat<b>21</b></span><span>Sun<b>22</b><i class="sv-pin" style="--i:3"></i></span>
+                        <span class="sv-playhead"><em data-counter="day">Sun</em></span>
                       </div>
+                      <span class="sv-ics" data-final>24h &amp; 2h · .ics ready</span>
+                    </div>
+                    <div class="sv-card sv-agenda sv-agenda-next">
+                      <span class="pill st-INTERVIEW"><i></i>Tomorrow</span>
+                      <div><strong>Technical interview with Harbour Health</strong><small>Calendar alert set for 24h and 2h before</small></div>
+                    </div>
+                    <div class="sv-card sv-agenda sv-agenda-later">
+                      <span class="pill st-SAVED"><i></i>In 2 days</span>
+                      <div><strong>Apply to Northwind Labs</strong><small>Backend Developer Intern · Toronto</small></div>
                     </div>
                   </div>
                   <figcaption class="sr-only">Upcoming interviews and application deadlines with calendar export alerts.</figcaption>
                 </figure>
               </article>
+            </div>
 
-              <!-- Feature 6: Offline-First Notebook and Search Analytics -->
-              <article class="feature-card feature-row feature-row-reverse" data-feature-id="insights">
+            <!-- Feature 6: Offline-First Notebook and Search Analytics -->
+            <div class="scene" data-scene="insights" data-canvas="dark">
+              <article class="feature-card feature-row feature-row-reverse" data-feature-id="insights" data-scene-stage>
                 <div class="feature-copy">
-                  <div class="feature-meta">
+                  <div class="feature-meta" data-reveal>
                     <span class="feature-icon" aria-hidden="true" data-icon="insights"></span>
                     <span class="feature-badge">06 · Private by design</span>
                   </div>
-                  <h3 class="feature-title">Offline-First Notebook and Search Analytics</h3>
-                  <p class="feature-description">Your application records live locally in your browser with an automatic draft retry queue that works on subway commutes and campus Wi-Fi. Spot patterns across your search with response-rate funnels, weekly application rhythm charts, and top employer skill bars. Optional end-to-end user-owned cloud sync keeps your devices in step when you choose.</p>
-                  <ul class="feature-annotations-list" aria-label="Key highlights">
+                  <h3 class="feature-title" data-reveal="words"><span class="kw">Offline-First</span> Notebook and <span class="kw">Search Analytics</span></h3>
+                  <p class="feature-description" data-reveal>Your application records live locally in your browser with an automatic draft retry queue that works on subway commutes and campus Wi-Fi. Spot patterns across your search with response-rate funnels, weekly application rhythm charts, and top employer skill bars. Optional end-to-end user-owned cloud sync keeps your devices in step when you choose.</p>
+                  <ul class="feature-annotations-list" aria-label="Key highlights" data-reveal>
                     <li><span data-icon="check"></span><span>100% offline-capable PWA storage</span></li>
                     <li><span data-icon="check"></span><span>Response funnel &amp; skill frequency charts</span></li>
                   </ul>
                 </div>
-                <figure class="feature-visual" role="img" aria-label="Annotated preview of the Insights dashboard displaying response-rate funnel, weekly application goal chart, and top requested skills.">
-                  <div class="annotated-screen">
-                    <div class="screen-bar">
-                      <span class="screen-title">Search Insights &amp; Funnel</span>
-                      <span class="screen-Annotation-tag">Local Analytics</span>
-                    </div>
-                    <div class="screen-body">
-                      <div class="insights-mock-bars">
-                        <div class="insight-bar-row"><span>Saved (24)</span><div class="insight-bar-track"><i style="width: 100%"></i></div></div>
-                        <div class="insight-bar-row"><span>Applied (18)</span><div class="insight-bar-track"><i style="width: 75%"></i></div></div>
-                        <div class="insight-bar-row"><span>Interview (6)</span><div class="insight-bar-track"><i style="width: 33%"></i></div></div>
-                        <div class="insight-bar-row"><span>Offer (2)</span><div class="insight-bar-track"><i style="width: 14%"></i></div></div>
+                <figure class="feature-visual scene-visual" role="img" aria-label="Annotated preview of the Insights dashboard displaying response-rate funnel, weekly application goal chart, and top requested skills.">
+                  <div class="sv-stage" aria-hidden="true">
+                    <div class="sv-group">
+                      <div class="sv-card sv-funnel">
+                        <strong class="sv-funnel-title">Search funnel</strong>
+                        <div class="sv-frow" style="--i:0; --v:1"><span>Saved (<b data-counter="saved">24</b>)</span><i></i></div>
+                        <div class="sv-frow" style="--i:1; --v:.75"><span>Applied (<b data-counter="appliedTotal">18</b>)</span><i></i></div>
+                        <div class="sv-frow" style="--i:2; --v:.33"><span>Interview (<b data-counter="interviews">6</b>)</span><i></i></div>
+                        <div class="sv-frow" style="--i:3; --v:.14"><span>Offer (<b data-counter="offers">2</b>)</span><i></i></div>
+                      </div>
+                      <div class="sv-card sv-metric sv-metric-a" style="--v:.75">
+                        <svg class="sv-ring" viewBox="0 0 52 52"><circle class="sv-ring-track" cx="26" cy="26" r="21"/><circle class="sv-ring-arc" cx="26" cy="26" r="21" pathLength="100"/></svg>
+                        <b data-counter="r1">75%</b><small>Applied</small>
+                      </div>
+                      <div class="sv-card sv-metric sv-metric-b" style="--v:.33">
+                        <svg class="sv-ring" viewBox="0 0 52 52"><circle class="sv-ring-track" cx="26" cy="26" r="21"/><circle class="sv-ring-arc" cx="26" cy="26" r="21" pathLength="100"/></svg>
+                        <b data-counter="r2">33%</b><small>Interview</small>
+                      </div>
+                      <div class="sv-card sv-metric sv-metric-c" style="--v:.14" data-final>
+                        <svg class="sv-ring" viewBox="0 0 52 52"><circle class="sv-ring-track" cx="26" cy="26" r="21"/><circle class="sv-ring-arc" cx="26" cy="26" r="21" pathLength="100"/></svg>
+                        <b data-counter="r3">14%</b><small>Offer</small>
                       </div>
                     </div>
                   </div>

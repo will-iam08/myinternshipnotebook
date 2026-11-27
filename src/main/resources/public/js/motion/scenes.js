@@ -6,12 +6,17 @@ export function createSceneSystem({ win = window, engine, headerHeight }) {
   let frameId = null;
   let pendingScrollY;
   let destroyed = false;
+  let refreshFrame = null;
 
   function render(scrollY) {
     if (!Number.isFinite(scrollY)) return;
     for (const scene of scenes.values()) {
       const { wrapper, stage, top, height, update, override } = scene;
-      if (wrapper.dataset.sceneActive === undefined) continue;
+      // Visibility comes from cached geometry, not the IntersectionObserver: its callback lands a frame
+      // or two after a jump, and a scene would show its default (finished) frame until then.
+      // A forced progress (test hook) renders even off screen.
+      const near = scrollY + 2 * viewportHeight > top && scrollY - viewportHeight < top + height;
+      if (!near && override === undefined) continue;
 
       let progress;
       if (wrapper.dataset.pinned === "true") {
@@ -65,7 +70,15 @@ export function createSceneSystem({ win = window, engine, headerHeight }) {
     }
     onScroll();
   }, { rootMargin: "100% 0px" });
-  const resizeObserver = new win.ResizeObserver(refresh);
+  // Re-measuring can change pin state and so wrapper heights; doing it inside the observer
+  // callback would trigger the observer again ("ResizeObserver loop" errors). Defer one frame.
+  const resizeObserver = new win.ResizeObserver(() => {
+    if (destroyed || refreshFrame !== null) return;
+    refreshFrame = win.requestAnimationFrame(() => {
+      refreshFrame = null;
+      refresh();
+    });
+  });
   resizeObserver.observe(win.document.documentElement);
   // Engine frames already run inside requestAnimationFrame: render now so scenes never trail the scroll by a frame.
   const unsubscribe = engine.onFrame(scrollY => {
@@ -106,6 +119,7 @@ export function createSceneSystem({ win = window, engine, headerHeight }) {
       intersectionObserver.disconnect();
       resizeObserver.disconnect();
       if (frameId !== null) win.cancelAnimationFrame(frameId);
+      if (refreshFrame !== null) win.cancelAnimationFrame(refreshFrame);
       for (const { wrapper, stage } of scenes.values()) {
         delete wrapper.dataset.sceneActive;
         delete wrapper.dataset.pinned;
