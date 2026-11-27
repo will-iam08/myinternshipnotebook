@@ -1053,20 +1053,25 @@ html, body {
   const WIN_TOP = (VIEW_H - WIN_H) / 2;
   const VIEW_TRANSITION_SEC = 0.32;
   const BOARD_APPROACH = CHAPTER.board + VIEW_TRANSITION_SEC + 0.05;
+  const PYTHON_APPROACH = 7.68;
+  const BOARD_TOP = ".board :is(.column.st-APPLIED, .column.st-INTERVIEW) :is(.column-head, .column-cards > :first-child)";
+  const PYTHON_CHIP = '[data-anchor="chip-python"]';
+  const RADAR = '[data-anchor="radar-card"]';
   const FOCUS_SELECTORS = {
     overview: "#demo-window",
     "quick-fill": "#demo-modal .demo-modal-card",
-    "board-columns": ".board :is(.column.st-APPLIED, .column.st-INTERVIEW)",
-    "python-chip": '[data-anchor="chip-python"]',
+    "board-top": BOARD_TOP,
+    "board-python": BOARD_TOP + ", " + PYTHON_CHIP,
     "stripe-interview": '[data-anchor="card-stripe-interview"]',
-    prep: ".demo-prep-page .prep",
+    prep: ".demo-prep-page :is(.prep-group, .demo-mock-card)",
     openings: ".demo-openings-feed",
-    radar: '[data-anchor="radar-card"]',
+    radar: RADAR,
+    "radar-export": RADAR + ', [data-anchor="open-export"]',
     export: ".demo-export, .demo-export-menu",
     funnel: '[data-anchor="funnel-card"]'
   };
 
-  // [Time, scale, focus, vertical aim offset, horizontal pan fraction].
+  // [Time, target scale, focus, vertical aim offset, horizontal pan fraction].
   const CAMERA_KEYS = [
     [0, 1, "overview"],
     [AT.newPage, 1, "overview"],
@@ -1074,11 +1079,11 @@ html, body {
     [3.66, 1.35, "quick-fill"],
     [4.36, 1, "overview"],
     [BOARD_APPROACH, 1, "overview"],
-    [5.85, 1.35, "board-columns", -15],
-    [7.35, 1.35, "board-columns", -15],
-    [7.75, 1.22, "board-columns", -44],
-    [8.18, 1.30, "python-chip", 0, 0.045],
-    [8.66, 1.30, "python-chip", 0, 0.045],
+    [5.85, 1.35, "board-top", 100],
+    [AT.dropStripe, 1.35, "board-top", 100],
+    [7.43, 1.35, "board-top"],
+    [PYTHON_APPROACH, 1.30, "board-python", 0, 0.045],
+    [8.66, 1.30, "board-python", 0, 0.045],
     [8.76, 1.30, "stripe-interview"],
     [9.42, 1.30, "stripe-interview", 105],
     [10.05, 1, "overview"],
@@ -1091,8 +1096,8 @@ html, body {
     [19.10, 1.30, "openings", -42],
     [19.87, 1, "overview"],
     [20.35, 1, "overview"],
-    [20.98, 1.26, "radar", -38],
-    [21.32, 1.26, "radar", -38],
+    [20.98, 1.26, "radar-export"],
+    [21.32, 1.26, "radar-export"],
     [21.98, 1.30, "export", 0, 0.035],
     [22.90, 1.30, "export", 0, 0.035],
     [23.52, 1.26, "radar"],
@@ -1106,10 +1111,7 @@ html, body {
   ];
   const FOCUS_RECTS = {};
 
-  function focusRect(name, root = document) {
-    const rects = [...root.querySelectorAll(FOCUS_SELECTORS[name])].filter(visible)
-      .map(el => el.getBoundingClientRect());
-    if (!rects.length) return null;
+  function enclosingRect(rects) {
     return {
       left: Math.min(...rects.map(r => r.left)),
       top: Math.min(...rects.map(r => r.top)),
@@ -1118,16 +1120,32 @@ html, body {
     };
   }
 
+  function focusRect(name, root = document) {
+    const rects = [...root.querySelectorAll(FOCUS_SELECTORS[name])].filter(visible)
+      .map(el => el.getBoundingClientRect());
+    return rects.length ? enclosingRect(rects) : null;
+  }
+
   function cameraKeyPoses() {
-    return CAMERA_KEYS.map(([time, scale, focus, offsetY = 0, pan = 0]) => {
+    return CAMERA_KEYS.map(([time, targetScale, focus, offsetY = 0, pan = 0]) => {
       const rect = FOCUS_RECTS[focus];
       if (!rect) throw new Error("Missing camera focus: " + focus);
+      const margin = ${FOCUS_MARGIN} + 0.01;
+      const fit = Math.min(
+        (VIEW_W - 2 * ${FOCUS_MARGIN}) / (rect.right - rect.left),
+        (VIEW_H - 2 * ${FOCUS_MARGIN}) / (rect.bottom - rect.top)
+      );
+      // Keep exact-fit shots inside the margin after transform rounding.
+      const scale = Math.min(targetScale, fit - 0.0001);
       const centerY = (rect.top + rect.bottom) / 2 + offsetY;
       const room = VIEW_H - WIN_H * scale;
-      const vertical = focus === "overview" || room === 0
-        ? 0.5
-        : clamp((VIEW_H / 2 - (centerY - WIN_TOP) * scale) / room, 0, 1);
-      return { time, scale, focus, pan, vertical };
+      const minRoom = Math.min(room * 0.005, room * 0.995);
+      const maxRoom = Math.max(room * 0.005, room * 0.995);
+      const minAim = margin - (rect.top - WIN_TOP) * scale;
+      const maxAim = VIEW_H - margin - (rect.bottom - WIN_TOP) * scale;
+      const aim = clamp(clamp(VIEW_H / 2 - (centerY - WIN_TOP) * scale, minAim, maxAim), minRoom, maxRoom);
+      const vertical = focus === "overview" || room === 0 ? 0.5 : aim / room;
+      return { time, scale, fit, focus, pan, vertical };
     });
   }
 
@@ -1139,7 +1157,7 @@ html, body {
     const p = a === b ? 0 : seg(t, a.time, b.time, quintInOut);
     const scale = lerp(a.scale, b.scale, p);
     const horizontal = lerp(a.pan, b.pan, p) + lerp(0.5, 0.02, seg(scale, 1, 1.1, smoothstep));
-    const vertical = lerp(0.005, 0.995, lerp(a.vertical, b.vertical, p));
+    const vertical = lerp(a.vertical, b.vertical, p);
     // Interpolate within the window's overscan so a push-in cannot expose backdrop.
     const tx = (VIEW_W - WIN_W * scale) * horizontal - WIN_LEFT * scale;
     const ty = (VIEW_H - WIN_H * scale) * vertical - WIN_TOP * scale;
@@ -1170,7 +1188,12 @@ html, body {
     };
 
     const captureFocus = (...names) => {
-      for (const name of names) FOCUS_RECTS[name] = focusRect(name);
+      for (const name of names) {
+        const current = focusRect(name);
+        if (!current) throw new Error("Missing camera focus: " + name);
+        const previous = FOCUS_RECTS[name];
+        FOCUS_RECTS[name] = previous ? enclosingRect([previous, current]) : current;
+      }
     };
     captureFocus("overview");
     capture(document, "nav-new", "nav-board", "nav-today", "nav-insights");
@@ -1181,14 +1204,17 @@ html, body {
 
     view.innerHTML = renderBoardView(CHAPTER.board, { measureDropSlot: true });
     capture(view, "card-stripe-applied", "slot-interview", "chip-python");
-    captureFocus("python-chip");
+    captureFocus("board-top");
     view.innerHTML = renderBoardView(AT.dropStripe + 0.2);
-    captureFocus("board-columns");
+    captureFocus("board-top", "board-python");
     view.innerHTML = renderBoardView(AT.filterPython);
     capture(view, "card-stripe-interview");
-    captureFocus("stripe-interview");
+    captureFocus("board-python", "stripe-interview");
     view.innerHTML = renderEntryPrepView(CHAPTER.prep);
     capture(view, "btn-mark-practiced");
+    captureFocus("prep");
+    view.innerHTML = renderEntryPrepView(AT.markPracticed + 0.18);
+    captureFocus("prep");
     view.innerHTML = renderEntryPrepView(14);
     captureFocus("prep");
     view.innerHTML = renderOpeningsView(CHAPTER.openings);
@@ -1197,7 +1223,7 @@ html, body {
     capture(view, "filter-term", "save-opening", "nav-calendar");
     view.innerHTML = renderTodayView(AT.openExport, { calendar: true });
     capture(view, "open-export", "download-calendar", "radar-card");
-    captureFocus("radar", "export");
+    captureFocus("radar", "radar-export", "export");
     view.innerHTML = renderInsightsView(CHAPTER.insights);
     capture(view, "funnel-card");
     captureFocus("funnel");
@@ -1241,7 +1267,7 @@ html, body {
       [AT.saveStripe - 0.35, AT.saveStripe + 0.06, pt("modal-save"), "arrow", -1],
       [CHAPTER.board - 0.14, BOARD_APPROACH, pt("nav-board"), "arrow", 1],
       [AT.grabStripe - 0.25, AT.grabStripe, pt("card-stripe-applied"), "grab", 0],
-      [AT.dropStripe, AT.dropStripe + 0.23, pt("slot-interview"), "grab", -1],
+      [AT.dropStripe, PYTHON_APPROACH, pt("slot-interview"), "grab", -1],
       [AT.filterPython - 0.21, AT.filterPython + 0.15, pt("chip-python"), "arrow", 1],
       [AT.openStripe - 0.27, AT.openStripe + 0.11, pt("card-stripe-interview"), "arrow", -1],
       [AT.markPracticed - 0.26, AT.markPracticed + 0.1, pt("btn-mark-practiced"), "arrow", 1],
@@ -1479,6 +1505,7 @@ html, body {
 
   measureAnchors();
   cameraPoses = cameraKeyPoses();
+  window.__cameraKeys = cameraPoses.map(({ time, scale, focus, fit }) => ({ time, scale, focus, fit }));
   cursorStops = buildCursorTimeline();
   window.__setDemoTime(0);
   const stage = document.getElementById("demo-stage");
@@ -1696,6 +1723,7 @@ function failsFraming(frame) {
 }
 
 async function auditFrames(page) {
+  const cameraKeys = await page.evaluate(() => window.__cameraKeys);
   const frames = [];
   for (let i = 0; i < TOTAL_FRAMES; i++) frames.push(await frameReport(page, i));
   const failures = frames.filter(failsFraming);
@@ -1704,7 +1732,7 @@ async function auditFrames(page) {
     frames.filter(frame => clearance(frame) !== null)
       .sort((a, b) => clearance(a) - clearance(b)).slice(0, 5)
   ]));
-  console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, worst }, null, 2));
+  console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, cameraKeys, worst }, null, 2));
   if (failures.length) throw new Error(`Framing audit failed on ${failures.length} frames`);
 }
 
