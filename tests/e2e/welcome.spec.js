@@ -223,10 +223,10 @@ test.describe("1. Hero section", () => {
       return Boolean(el && el.readyState >= 1);
     });
 
-    const expectedTimes = [0, 4.5, 9, 13.5];
+    const expectedTimes = [0, 5.2, 10.4, 15.6];
     for (let index = expectedTimes.length - 1; index >= 0; index--) {
       await pills.nth(index).click();
-      // Read the position straight after the click: the clip keeps playing and loops at about 17s,
+      // Read the position straight after the click: the clip keeps playing and loops at about 20.8s,
       // so on a slow run the checks below could otherwise let it wrap past the end back to 0.
       const currentTime = await video.evaluate(el => el.currentTime);
       expect(Math.abs(currentTime - expectedTimes[index])).toBeLessThan(1.0);
@@ -242,14 +242,14 @@ test.describe("1. Hero section", () => {
     // Verify timeupdate keeps the active chapter pill in sync with playback position
     await video.evaluate(el => {
       el.pause();
-      el.currentTime = 10.2;
+      el.currentTime = 11.5;
       el.dispatchEvent(new Event("timeupdate"));
     });
     await expect(pills.nth(2)).toHaveAttribute("aria-pressed", "true");
     await expect(pills.nth(2)).toHaveClass(/is-active/);
 
     await video.evaluate(el => {
-      el.currentTime = 14.5;
+      el.currentTime = 16.8;
       el.dispatchEvent(new Event("timeupdate"));
     });
     await expect(pills.nth(3)).toHaveAttribute("aria-pressed", "true");

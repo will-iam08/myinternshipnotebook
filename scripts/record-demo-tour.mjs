@@ -10,13 +10,16 @@ const PUBLIC_DIR = path.join(ROOT, "src/main/resources/public");
 const MEDIA_DIR = path.join(PUBLIC_DIR, "media");
 const STYLES_PATH = path.join(PUBLIC_DIR, "styles.css");
 
-const WIDTH = 1280;
-const HEIGHT = 720;
-const FPS = 12;
-const DURATION_SEC = 17.0;
-const TOTAL_FRAMES = Math.round(FPS * DURATION_SEC); // 204 frames
-const MIN_VIDEO_BYTES = 600 * 1024;
-const MAX_VIDEO_BYTES = 1200 * 1024;
+const VIEWPORT_WIDTH = 1280;
+const VIEWPORT_HEIGHT = 720;
+const DEVICE_SCALE_FACTOR = 1.5; // 1920x1080 supersampled source capture
+const OUT_WIDTH = 1280;
+const OUT_HEIGHT = 720;
+const FPS = 60;
+const DURATION_SEC = 20.8;
+const TOTAL_FRAMES = Math.round(FPS * DURATION_SEC); // 1248 frames
+const MIN_VIDEO_BYTES = 400 * 1024;
+const MAX_VIDEO_BYTES = 1450 * 1024;
 
 function findFfmpeg() {
   const candidates = [
@@ -41,7 +44,7 @@ function findFfmpeg() {
 }
 
 function buildSceneHtml(appCss) {
-  const logoSvg = `<svg viewBox="0 0 40 40" width="34" height="34" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="9" fill="#0f172a"/><rect x="10" y="8.5" width="21" height="24" rx="3" fill="#faf9f6"/><path d="M14.5 16h11M14.5 20.5h11M14.5 25h7" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round"/><path d="M25 8.5h4.5v10l-2.25-1.8L25 18.5Z" fill="#b33812"/><g fill="#0f172a"><circle cx="10" cy="13" r="1.4"/><circle cx="10" cy="19" r="1.4"/><circle cx="10" cy="25" r="1.4"/></g></svg>`;
+  const logoSvg = `<svg viewBox="0 0 40 40" width="32" height="32" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="9" fill="#0f172a"/><rect x="10" y="8.5" width="21" height="24" rx="3" fill="#faf9f6"/><path d="M14.5 16h11M14.5 20.5h11M14.5 25h7" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round"/><path d="M25 8.5h4.5v10l-2.25-1.8L25 18.5Z" fill="#b33812"/><g fill="#0f172a"><circle cx="10" cy="13" r="1.4"/><circle cx="10" cy="19" r="1.4"/><circle cx="10" cy="25" r="1.4"/></g></svg>`;
 
   return `<!doctype html>
 <html lang="en" data-theme="light">
@@ -50,103 +53,184 @@ function buildSceneHtml(appCss) {
 <style>
 ${appCss}
 
-/* Deterministic 1280x720 demo stage adjustments */
+/* Midnight-navy studio stage + floating macOS app window */
 html, body {
   width: 1280px;
   height: 720px;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: var(--desk);
+  background: #0b1120;
 }
+
 .demo-stage {
   position: relative;
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: var(--desk);
+  background:
+    radial-gradient(64% 58% at 50% 42%, rgba(200, 67, 25, 0.14), transparent 70%),
+    radial-gradient(56% 52% at 20% 18%, rgba(59, 130, 246, 0.14), transparent 65%),
+    radial-gradient(48% 48% at 84% 82%, rgba(20, 184, 138, 0.08), transparent 65%),
+    linear-gradient(155deg, #0b1120 0%, #111b2e 52%, #162033 100%);
 }
+
+/* Subtle studio vignette and ambient specular sweep */
+.demo-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 56%, rgba(4, 7, 15, 0.45) 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
 .demo-camera {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-  transform-origin: 55% 45%;
-  will-change: transform;
-}
-.app.demo-app {
+  position: relative;
   width: 1280px;
   height: 720px;
+  transform-origin: 0 0;
+  will-change: transform;
+  z-index: 3;
+}
+
+.demo-window {
+  position: absolute;
+  left: 72px;
+  top: 42px;
+  width: 1136px;
+  height: 636px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 38px 90px -18px rgba(2, 6, 23, 0.82),
+    0 12px 32px -8px rgba(2, 6, 23, 0.55),
+    0 0 0 1px rgba(15, 23, 42, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  background: var(--paper);
+}
+
+.app.demo-app {
+  width: 1136px;
+  height: 636px;
   max-width: none;
   border-radius: 0;
   box-shadow: none;
-  grid-template-columns: 244px minmax(0, 1fr);
+  grid-template-columns: 224px minmax(0, 1fr);
 }
-.demo-app .page {
+
+.demo-app .cover {
+  padding: 16px 14px 16px;
+}
+
+.demo-traffic-lights {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 6px 14px;
+}
+.demo-traffic-lights span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: block;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);
+}
+.demo-traffic-lights .tl-close { background: #ff5f57; }
+.demo-traffic-lights .tl-min { background: #febc2e; }
+.demo-traffic-lights .tl-max { background: #28c840; }
+
+.demo-app .cover-label {
+  margin-bottom: 14px;
+}
+
+.demo-app .page-wrap {
+  position: relative;
+  min-width: 0;
+  height: 636px;
   overflow: hidden;
 }
+
+.demo-app .page {
+  position: relative;
+  height: 636px;
+  overflow: hidden;
+}
+
+.demo-view-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  will-change: transform, opacity;
+}
+
 .demo-app .view {
-  padding: 26px 36px 32px 54px;
+  padding: 22px 32px 28px 48px;
   max-width: none;
 }
+
 .demo-app .view-head {
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
 }
+
 .demo-app .view-title {
-  font-size: 2.05rem;
+  font-size: 1.92rem;
 }
 
 /* Hover and focus simulation classes */
 .is-hovered {
   border-color: var(--accent-ink) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-md) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent), var(--shadow-md) !important;
 }
 .tab.is-hovered {
   background: var(--cover-hover) !important;
   color: var(--cover-ink) !important;
   box-shadow: none !important;
 }
+.button.primary.is-hovered {
+  background: var(--primary-hover) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent), 0 8px 18px -6px rgba(179, 56, 18, 0.45) !important;
+}
 .demo-autofill-flash {
   border-color: var(--accent-ink) !important;
-  background: color-mix(in srgb, var(--accent-soft) 55%, var(--card)) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent) !important;
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--card)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent) !important;
 }
 
-/* Modal overlay for Workflow 1 */
+/* Modal overlay inside the floating window */
 .demo-modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(9, 12, 18, 0.52);
-  backdrop-filter: blur(3px);
+  background: rgba(9, 12, 18, 0.48);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
   z-index: 30;
   opacity: 0;
   pointer-events: none;
 }
-.demo-modal-backdrop.is-open {
-  opacity: 1;
-}
 .demo-modal-card {
-  width: 580px;
+  width: 540px;
   background: var(--card);
   border: 1px solid var(--line-strong);
-  border-radius: 18px;
-  box-shadow: var(--shadow-lg);
+  border-radius: 16px;
+  box-shadow: 0 28px 60px -14px rgba(15, 23, 42, 0.42), 0 0 0 1px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+  will-change: transform, opacity;
 }
 .demo-modal-card .sheet-head {
-  padding: 14px 20px 12px;
+  padding: 13px 20px 10px;
 }
 .demo-modal-card .sheet-head h2 {
-  font-size: 1.35rem;
+  font-size: 1.28rem;
 }
 .demo-modal-card .sheet-body {
-  padding: 14px 20px;
+  padding: 12px 20px;
 }
 .demo-modal-card .sheet-foot {
-  padding: 12px 20px;
+  padding: 10px 20px 12px;
 }
 .demo-typing-caret {
   display: inline-block;
@@ -159,13 +243,13 @@ html, body {
 .demo-quickfill-display {
   display: flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 40px;
   flex: 1;
   background: var(--card);
   border: 1.5px solid var(--line-strong);
   border-radius: 8px;
-  padding: 8px 12px;
-  font: 500 0.88rem/1.3 var(--mono);
+  padding: 7px 12px;
+  font: 500 0.84rem/1.3 var(--mono);
   color: var(--ink);
   overflow: hidden;
   white-space: nowrap;
@@ -182,9 +266,9 @@ html, body {
   background: var(--card);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  min-height: 42px;
-  padding: 8px 12px;
-  font-size: 0.92rem;
+  min-height: 38px;
+  padding: 7px 11px;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--ink);
   display: flex;
@@ -196,14 +280,22 @@ html, body {
   font-weight: 450;
 }
 
-/* Kanban drag ghost and stamp */
+/* Kanban drag ghost, drop slot, and stamp */
+.demo-drop-slot {
+  border: 2px dashed var(--st-interview);
+  background: color-mix(in srgb, var(--st-interview-bg) 55%, transparent);
+  border-radius: 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
 .demo-drag-card {
   position: absolute;
-  width: 174px;
+  width: 170px;
   z-index: 35;
   pointer-events: none;
-  box-shadow: 0 22px 44px -12px rgba(15, 23, 42, 0.34), 0 0 0 2px var(--st-interview) !important;
-  transform: rotate(-1.8deg) scale(1.03);
+  margin: 0;
+  box-shadow: 0 26px 48px -12px rgba(15, 23, 42, 0.36), 0 0 0 2px var(--st-interview) !important;
+  will-change: transform, left, top;
 }
 .demo-history-stamp {
   display: inline-flex;
@@ -215,37 +307,38 @@ html, body {
   background: var(--st-interview-bg);
   border: 1px solid color-mix(in srgb, var(--st-interview) 45%, transparent);
   color: var(--ink);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
+  transform-origin: left center;
 }
 
 /* Mock interview score overlay card inside entry workflow */
 .demo-mock-card {
-  margin-top: 14px;
+  margin-top: 12px;
   background: var(--paper-2);
   border: 1px solid var(--line-strong);
   border-radius: 14px;
-  padding: 16px 18px;
+  padding: 14px 16px;
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 16px;
+  gap: 14px;
   align-items: center;
 }
 .demo-mock-score-box {
   background: var(--st-saved-bg);
   border: 1.5px solid var(--st-saved);
   border-radius: 12px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   text-align: center;
-  min-width: 120px;
+  min-width: 114px;
 }
 .demo-mock-score-box strong {
   display: block;
-  font: 700 2rem/1 var(--serif);
+  font: 700 1.85rem/1 var(--serif);
   color: var(--ink);
 }
 .demo-mock-score-box span {
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--good);
   text-transform: uppercase;
@@ -254,7 +347,7 @@ html, body {
 .demo-mock-metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
   margin-top: 6px;
 }
 .demo-metric-pill {
@@ -262,7 +355,7 @@ html, body {
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   padding: 4px 10px;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 650;
   color: var(--ink-2);
 }
@@ -272,67 +365,34 @@ html, body {
   color: var(--ink);
 }
 
-/* Floating action callout pill (bottom-left of paper workspace, clear of #hero bottom-right Pause control) */
-.demo-callout {
-  position: absolute;
-  left: 268px;
-  right: auto;
-  bottom: 20px;
-  z-index: 60;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  background: #0f172a;
-  color: #f8fafc;
-  border: 1px solid rgba(248, 250, 252, 0.16);
-  border-radius: 999px;
-  padding: 9px 16px 9px 10px;
-  box-shadow: 0 18px 36px -10px rgba(15, 23, 42, 0.45);
-  font-size: 0.86rem;
-  font-weight: 600;
-}
-.demo-callout-step {
-  background: #c84319;
-  color: #ffffff;
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  font-weight: 700;
-  padding: 3px 9px;
-  border-radius: 999px;
-}
-.demo-callout-sub {
-  color: #cbd5e1;
-  font-weight: 500;
-}
-
-/* Toast notification */
+/* Toast notification inside floating window */
 .demo-toast {
   position: absolute;
-  right: 24px;
-  bottom: 72px;
+  right: 20px;
+  bottom: 20px;
   z-index: 55;
   background: var(--ink);
   color: var(--paper);
   border-radius: 12px;
-  padding: 10px 16px;
-  font-size: 0.88rem;
+  padding: 9px 15px;
+  font-size: 0.84rem;
   font-weight: 650;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 18px 34px -10px rgba(15, 23, 42, 0.45);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-/* Custom animated cursor and click ripple */
+/* Top-level crisp Retina cursor and soft click halo */
 .demo-ripple {
   position: absolute;
-  width: 44px;
-  height: 44px;
-  margin-left: -22px;
-  margin-top: -22px;
+  width: 38px;
+  height: 38px;
+  margin-left: -19px;
+  margin-top: -19px;
   border-radius: 50%;
-  border: 3px solid #c84319;
-  background: rgba(200, 67, 25, 0.18);
+  border: 2px solid rgba(200, 67, 25, 0.85);
+  background: rgba(200, 67, 25, 0.14);
   pointer-events: none;
   z-index: 80;
 }
@@ -344,135 +404,127 @@ html, body {
   height: 32px;
   pointer-events: none;
   z-index: 90;
-  filter: drop-shadow(0 4px 8px rgba(15, 23, 42, 0.35));
+  filter: drop-shadow(0 5px 10px rgba(2, 6, 23, 0.38));
+  transform-origin: 4px 3px;
 }
 </style>
 </head>
 <body>
 <div class="demo-stage" id="demo-stage">
-  <div class="app demo-app">
-    <aside class="cover" aria-label="Notebook">
-      <div class="cover-label">
-        <span class="cover-logo">${logoSvg}</span>
-        <span class="cover-title">My Internship<br />Notebook</span>
-        <span class="cover-sub">Applications &amp; interviews</span>
-      </div>
-      <div class="cover-actions">
-        <button class="button primary cover-new" id="nav-new-btn" type="button">
-          <span>+ New application</span><kbd>N</kbd>
-        </button>
-        <div class="cover-search">
-          <span>Search</span><kbd>Cmd+K</kbd>
+  <div class="demo-camera" id="demo-camera">
+    <div class="demo-window" id="demo-window">
+      <div class="app demo-app">
+        <aside class="cover" aria-label="Notebook">
+          <div class="demo-traffic-lights" aria-hidden="true">
+            <span class="tl-close"></span>
+            <span class="tl-min"></span>
+            <span class="tl-max"></span>
+          </div>
+          <div class="cover-label">
+            <span class="cover-logo">${logoSvg}</span>
+            <span class="cover-title">My Internship<br />Notebook</span>
+            <span class="cover-sub">Applications &amp; interviews</span>
+          </div>
+          <div class="cover-actions">
+            <button class="button primary cover-new" id="nav-new-btn" data-anchor="nav-new" type="button">
+              <span>+ New application</span><kbd>N</kbd>
+            </button>
+            <div class="cover-search">
+              <span>Search</span><kbd>Cmd+K</kbd>
+            </div>
+          </div>
+          <nav class="tabs" aria-label="Sections">
+            <a class="tab" id="nav-today" data-anchor="nav-today" style="--tab: var(--tab-today)"><span>Today</span></a>
+            <a class="tab" id="nav-board" data-anchor="nav-board" style="--tab: var(--tab-board)"><span>Board</span><b class="tab-count" id="nav-board-count">10</b></a>
+            <a class="tab" id="nav-notebook" style="--tab: var(--tab-notebook)"><span>All pages</span><b class="tab-count">13</b></a>
+            <a class="tab" id="nav-insights" data-anchor="nav-insights" style="--tab: var(--tab-insights)"><span>Insights</span></a>
+          </nav>
+          <div class="cover-footer">
+            <p class="storage-chip">Private to this browser</p>
+          </div>
+        </aside>
+        <div class="page-wrap">
+          <div class="binding" aria-hidden="true"></div>
+          <main class="page" id="demo-page">
+            <div class="demo-view-layer" id="demo-view-out" style="display:none;"></div>
+            <div class="demo-view-layer" id="demo-view-in"></div>
+          </main>
         </div>
       </div>
-      <nav class="tabs" aria-label="Sections">
-        <a class="tab" id="nav-today" style="--tab: var(--tab-today)"><span>Today</span></a>
-        <a class="tab" id="nav-board" style="--tab: var(--tab-board)"><span>Board</span><b class="tab-count">11</b></a>
-        <a class="tab" id="nav-notebook" style="--tab: var(--tab-notebook)"><span>All pages</span><b class="tab-count">14</b></a>
-        <a class="tab" id="nav-insights" style="--tab: var(--tab-insights)"><span>Insights</span></a>
-      </nav>
-      <div class="cover-footer">
-        <p class="storage-chip">Private to this browser</p>
-      </div>
-    </aside>
-    <div class="demo-camera" id="demo-camera">
-      <div class="page-wrap">
-        <div class="binding" aria-hidden="true"></div>
-        <main class="page" id="demo-page">
-          <div class="view" id="demo-view"></div>
-        </main>
-      </div>
+
+      <div class="demo-modal-backdrop" id="demo-modal"></div>
+      <div class="demo-toast" id="demo-toast" style="display:none;"></div>
     </div>
   </div>
 
-  <div class="demo-modal-backdrop" id="demo-modal"></div>
-
-  <div class="demo-toast" id="demo-toast" style="display:none;"></div>
-  <div class="demo-callout" id="demo-callout"></div>
   <div class="demo-ripple" id="demo-ripple" style="display:none;"></div>
-  <div class="demo-cursor" id="demo-cursor">
-    <svg viewBox="0 0 28 32" width="28" height="32" aria-hidden="true">
-      <path d="M3.5 2.5 L23.5 14.5 L14.5 16.8 L19 26.2 L15.2 28 L10.7 18.6 L4.2 24 Z" fill="#0f172a" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
-    </svg>
-  </div>
+  <div class="demo-cursor" id="demo-cursor"></div>
 </div>
 
 <script>
 (function () {
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
   const lerp = (a, b, t) => a + (b - a) * t;
-  const ease = t => {
+  const smoothstep = t => {
+    const x = clamp(t, 0, 1);
+    return x * x * (3 - 2 * x);
+  };
+  const quintOut = t => {
+    const x = clamp(t, 0, 1);
+    return 1 - Math.pow(1 - x, 5);
+  };
+  const quintInOut = t => {
+    const x = clamp(t, 0, 1);
+    return x < 0.5 ? 16 * Math.pow(x, 5) : 1 - Math.pow(-2 * x + 2, 5) / 2;
+  };
+  const cubicInOut = t => {
     const x = clamp(t, 0, 1);
     return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
   };
-  const seg = (t, t0, t1) => ease(clamp((t - t0) / (t1 - t0), 0, 1));
 
+  // Analytical underdamped spring curve (0 -> 1 with slight natural Apple overshoot)
+  function springOut(t, stiffness = 240, damping = 20) {
+    if (t <= 0) return 0;
+    const w0 = Math.sqrt(stiffness);
+    const zeta = damping / (2 * w0);
+    if (zeta < 1) {
+      const wd = w0 * Math.sqrt(1 - zeta * zeta);
+      const decay = Math.exp(-zeta * w0 * t);
+      return 1 - decay * (Math.cos(wd * t) + (zeta * w0 / wd) * Math.sin(wd * t));
+    }
+    const decay = Math.exp(-w0 * t);
+    return 1 - decay * (1 + w0 * t);
+  }
+
+  const seg = (t, t0, t1, fn = cubicInOut) => fn(clamp((t - t0) / (t1 - t0), 0, 1));
   const QUICK_URL = "https://boards.greenhouse.io/stripe/jobs/98765";
 
-  function cursorPath(t) {
-    const pts = [
-      [0.0, 740, 380],
-      [0.65, 118, 182],  // New application btn
-      [1.4, 118, 182],
-      [1.75, 535, 298],  // Quickfill input
-      [2.45, 535, 298],
-      [2.65, 878, 298],  // Fill button
-      [3.25, 760, 480],  // Inspect autofilled fields cleanly below labels
-      [3.9, 845, 558],   // Save to notebook
-      [4.5, 845, 558],
-      [4.85, 118, 336],  // Sidebar Board tab
-      [5.55, 520, 295],  // Stripe card in Applied
-      [6.85, 728, 295],  // Drag across to Interview column
-      [7.4, 728, 295],
-      [8.05, 1110, 82],  // Skill filter chip Python
-      [8.95, 1110, 82],
-      [9.35, 755, 265],  // Click Interview Stripe card
-      [10.1, 950, 305],  // Scroll to interview prep
-      [10.75, 1135, 197], // Click Mark practiced STAR button
-      [11.4, 760, 470],  // Focus mock feedback panel
-      [13.45, 760, 470],
-      [13.85, 118, 292], // Sidebar Today tab
-      [14.5, 620, 345],  // Hover deadline radar card
-      [15.4, 118, 424],  // Sidebar Insights tab
-      [16.2, 680, 410],  // Hover conversion funnel
-      [17.0, 680, 410]
-    ];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const [t0, x0, y0] = pts[i];
-      const [t1, x1, y1] = pts[i + 1];
-      if (t >= t0 && t <= t1) {
-        const p = seg(t, t0, t1);
-        return { x: lerp(x0, x1, p), y: lerp(y0, y1, p) };
-      }
+  // Contextual macOS cursors (Arrow, Text I-Beam, Open Grab Hand, Closed Grabbing Hand)
+  const CURSORS = {
+    arrow: {
+      hotspot: [4, 3],
+      svg: \`<svg viewBox="0 0 28 32" width="26" height="30" aria-hidden="true"><path d="M4.2 2.6 L22.5 14.2 L13.8 16.4 L18.2 25.4 L14.6 27.1 L10.2 18.1 L4.4 23.4 Z" fill="#0f172a" stroke="#ffffff" stroke-width="2.1" stroke-linejoin="round"/></svg>\`
+    },
+    ibeam: {
+      hotspot: [12, 15],
+      svg: \`<svg viewBox="0 0 24 30" width="22" height="28" aria-hidden="true"><path d="M8 4.5 h8 M12 4.5 v21 M8 25.5 h8" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" fill="none"/><path d="M8 4.5 h8 M12 4.5 v21 M8 25.5 h8" stroke="#0f172a" stroke-width="2" stroke-linecap="round" fill="none"/></svg>\`
+    },
+    grab: {
+      hotspot: [13, 13],
+      svg: \`<svg viewBox="0 0 28 28" width="26" height="26" aria-hidden="true"><path d="M10.5 13V6.5a1.6 1.6 0 0 1 3.2 0V12m0-4.5a1.6 1.6 0 0 1 3.2 0V12m0-3.5a1.6 1.6 0 0 1 3.2 0V13m0-1.5a1.5 1.5 0 0 1 3 0v5.3c0 4.2-2.9 7.2-7 7.2h-1.8c-2.6 0-4.6-1.3-6.1-3.4l-2.6-3.7a1.5 1.5 0 0 1 2.4-1.8l2 2.2V9.5a1.5 1.5 0 0 1 3 0" fill="#ffffff" stroke="#0f172a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>\`
+    },
+    grabbing: {
+      hotspot: [13, 14],
+      svg: \`<svg viewBox="0 0 28 28" width="26" height="26" aria-hidden="true"><path d="M9.5 13.5v-3a1.6 1.6 0 0 1 3.2 0v2m0-2.4a1.6 1.6 0 0 1 3.2 0v2.4m0-2a1.6 1.6 0 0 1 3.2 0v2.5m0-1.5a1.5 1.5 0 0 1 3 0v4.8c0 4.1-2.8 7-6.8 7h-1.8c-2.5 0-4.4-1.2-5.9-3.3l-2.1-3a1.5 1.5 0 0 1 2.4-1.8l1.6 1.6v-3.3z" fill="#ffffff" stroke="#0f172a" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg>\`
     }
-    const last = pts[pts.length - 1];
-    return { x: last[1], y: last[2] };
-  }
+  };
 
-  function activeRipple(t) {
-    const clicks = [
-      [0.68, 118, 182],
-      [1.76, 535, 298],
-      [2.68, 878, 298],
-      [3.95, 845, 558],
-      [4.88, 118, 336],
-      [6.85, 728, 295],
-      [8.08, 1110, 82],
-      [9.38, 755, 265],
-      [10.78, 1135, 197],
-      [13.88, 118, 292],
-      [15.42, 118, 424]
-    ];
-    for (const [ct, cx, cy] of clicks) {
-      if (t >= ct && t <= ct + 0.42) {
-        const p = (t - ct) / 0.42;
-        return { x: cx, y: cy, scale: 0.45 + p * 1.15, opacity: 1 - p };
-      }
-    }
-    return null;
-  }
+  function renderTodayView(t, { highlightRadar = false, countOverride = null } = {}) {
+    const savedStripe = countOverride !== null ? countOverride : t >= 4.05;
+    const activeCount = savedStripe ? 11 : 10;
+    const appliedGrow = savedStripe ? 4 : 3;
+    const radarPulse = highlightRadar ? seg(t, 18.4, 18.85, quintOut) : 0;
 
-  function renderTodayWorkflow(t, { highlightRadar = false } = {}) {
     return \`
       <header class="view-head">
         <div>
@@ -481,26 +533,26 @@ html, body {
           <p class="view-sub">Tuesday, Nov 17 - 3 priorities due this week</p>
         </div>
       </header>
-      <section class="card strip" style="margin-bottom: 16px;">
+      <section class="card strip" style="margin-bottom: 14px;">
         <div class="strip-top">
-          <div class="strip-figure"><strong>11</strong><span>active applications</span></div>
+          <div class="strip-figure"><strong>\${activeCount}</strong><span>active applications</span></div>
           <div class="strip-rate">Response rate <b>42%</b> (5 of 12 sent)</div>
         </div>
         <div class="stack-bar">
           <span style="flex-grow:3; --s: var(--st-saved)"></span>
-          <span style="flex-grow:4; --s: var(--st-applied)"></span>
+          <span style="flex-grow:\${appliedGrow}; --s: var(--st-applied)"></span>
           <span style="flex-grow:3; --s: var(--st-interview)"></span>
           <span style="flex-grow:1; --s: var(--st-offer)"></span>
         </div>
       </section>
       <div class="today-grid">
-        <section class="card upcoming-card \${highlightRadar ? "is-hovered" : ""}" style="grid-column: span 7;">
+        <section class="card upcoming-card \${highlightRadar ? "is-hovered" : ""}" data-anchor="radar-card" style="grid-column: span 7; \${highlightRadar ? \`box-shadow: 0 0 0 \${(3 * radarPulse).toFixed(1)}px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-md);\` : ""}">
           <div class="card-head">
             <div>
               <h2 class="card-title">Next up - Deadline Radar</h2>
               <p class="card-note">Upcoming interviews and closing dates</p>
             </div>
-            <span class="pill st-INTERVIEW">24h &amp; 2h .ics reminders</span>
+            <span class="pill st-INTERVIEW" style="\${highlightRadar ? "box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-interview) 35%, transparent);" : ""}">24h &amp; 2h .ics reminders</span>
           </div>
           <ul class="agenda">
             <li class="agenda-day">
@@ -550,26 +602,44 @@ html, body {
     \`;
   }
 
-  function renderBoardWorkflow(t) {
-    const dragStart = 5.6;
-    const dragEnd = 6.8;
-    const isDragging = t >= dragStart && t < dragEnd;
-    const dropped = t >= dragEnd;
-    const filterPython = t >= 8.1;
+  function renderBoardView(t, { forcePreDrag = false, forcePostDrop = false } = {}) {
+    const dragStart = 6.10;
+    const dragEnd = 7.45;
+    const isDragging = !forcePreDrag && !forcePostDrop && t >= dragStart && t < dragEnd;
+    const dropped = forcePostDrop || (!forcePreDrag && t >= dragEnd);
+    const filterPython = !forcePreDrag && !forcePostDrop && t >= 8.65;
 
-    const dragP = seg(t, dragStart, dragEnd);
-    const dragX = lerp(474, 678, dragP);
-    const dragY = lerp(238, 224, dragP) - Math.sin(dragP * Math.PI) * 18;
+    const dragP = seg(t, dragStart, dragEnd, quintInOut);
+    const lift = isDragging ? Math.sin(clamp((t - dragStart) / 0.25, 0, 1) * Math.PI * 0.5) * (1 - Math.pow(clamp((t - (dragEnd - 0.18)) / 0.18, 0, 1), 2)) : 0;
+    const slotGrow = isDragging ? smoothstep(clamp((t - 6.35) / 0.45, 0, 1)) : 0;
+    const stampPop = dropped && !forcePostDrop ? clamp(springOut(t - dragEnd, 320, 20), 0, 1.1) : (forcePostDrop ? 1 : 0);
+
+    // Filter out non-Python cards cleanly
+    const filterP = filterPython ? seg(t, 8.65, 9.0, quintOut) : 0;
+    const nonPyStyle = filterPython
+      ? \`opacity:\${(1 - filterP).toFixed(3)}; transform: scale(\${(1 - 0.08 * filterP).toFixed(3)}); max-height:\${Math.round(140 * (1 - filterP))}px; margin-bottom:\${Math.round(8 * (1 - filterP))}px; padding-top:\${Math.round(11 * (1 - filterP))}px; padding-bottom:\${Math.round(11 * (1 - filterP))}px; overflow:hidden; border-width:\${filterP > 0.85 ? 0 : 1}px;\`
+      : "";
+
+    const stripeCardHover = !isDragging && !dropped && t >= 5.75 && t < dragStart;
+    const stripePostHover = dropped && t >= 9.6 && t < 10.4;
 
     const stripeCardHtml = (showStamp) => \`
-      <article class="app-card st-\${dropped ? "INTERVIEW" : "APPLIED"}" style="\${dropped ? "border-color: var(--st-interview); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-interview) 28%, transparent), var(--shadow-md);" : ""}">
+      <article class="app-card st-\${dropped ? "INTERVIEW" : "APPLIED"} \${stripeCardHover || stripePostHover ? "is-hovered" : ""}" data-anchor="\${dropped ? "card-stripe-interview" : "card-stripe-applied"}" style="\${dropped ? "border-color: var(--st-interview); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-interview) 26%, transparent), var(--shadow-md);" : ""}">
         <div class="app-card-top"><span class="app-company">Stripe</span></div>
         <h3 class="app-role">Software Engineer Intern</h3>
         <div class="app-meta"><span>Seattle, WA</span></div>
         <div class="chips"><span class="chip">Python</span><span class="chip">Go</span><span class="chip">SQL</span></div>
-        \${showStamp ? '<span class="demo-history-stamp">Moved to Interview - Just now</span>' : ""}
+        \${showStamp ? \`<span class="demo-history-stamp" style="transform: scale(\${stampPop.toFixed(3)}); opacity: \${clamp(stampPop * 1.4, 0, 1).toFixed(2)};">Moved to Interview · Just now</span>\` : ""}
       </article>
     \`;
+
+    // Drag start/end centers computed relative to #demo-page
+    const dragStartPt = window.__BOARD_DRAG_START || { x: 432, y: 205 };
+    const dragEndPt = window.__BOARD_DRAG_END || { x: 625, y: 196 };
+    const dragX = lerp(dragStartPt.x, dragEndPt.x, dragP);
+    const dragY = lerp(dragStartPt.y, dragEndPt.y, dragP) - Math.sin(dragP * Math.PI) * 26;
+    const dragScale = 1 + 0.048 * lift;
+    const dragRot = -1.8 * lift;
 
     return \`
       <header class="view-head">
@@ -579,11 +649,11 @@ html, body {
         </div>
         <div class="filters" style="margin:0;">
           <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (11)</button>
-          <button type="button" class="filter-chip \${t >= 7.8 && t < 8.1 ? "is-hovered" : ""}" aria-pressed="\${filterPython}">Python (3)</button>
+          <button type="button" class="filter-chip \${t >= 8.35 && t < 8.65 ? "is-hovered" : ""}" data-anchor="chip-python" aria-pressed="\${filterPython}">Python (4)</button>
           <button type="button" class="filter-chip" aria-pressed="false">TypeScript (4)</button>
         </div>
       </header>
-      <div class="board" style="grid-auto-columns: minmax(175px, 1fr); gap: 10px;">
+      <div class="board" style="grid-auto-columns: minmax(170px, 1fr); gap: 10px;">
         <section class="column st-SAVED">
           <div class="column-head"><span class="dot"></span><h2>Saved</h2><span class="count">\${filterPython ? 1 : 3}</span></div>
           <div class="column-cards">
@@ -592,20 +662,22 @@ html, body {
               <h3 class="app-role">Backend Intern</h3>
               <div class="chips"><span class="chip">Python</span><span class="chip">SQL</span></div>
             </article>
-            \${filterPython ? "" : '<article class="app-card st-SAVED"><div class="app-card-top"><span class="app-company">Figma</span></div><h3 class="app-role">Product Design</h3><div class="chips"><span class="chip">Figma</span></div></article>'}
+            \${filterP < 0.99 ? \`<article class="app-card st-SAVED" style="\${nonPyStyle}"><div class="app-card-top"><span class="app-company">Figma</span></div><h3 class="app-role">Product Design</h3><div class="chips"><span class="chip">Figma</span></div></article>\` : ""}
           </div>
         </section>
         <section class="column st-APPLIED">
-          <div class="column-head"><span class="dot"></span><h2>Applied</h2><span class="count">\${dropped || isDragging ? (filterPython ? 0 : 2) : (filterPython ? 1 : 3)}</span></div>
+          <div class="column-head"><span class="dot"></span><h2>Applied</h2><span class="count">\${dropped || isDragging ? (filterPython ? 0 : 3) : (filterPython ? 1 : 4)}</span></div>
           <div class="column-cards">
             \${(!isDragging && !dropped) ? stripeCardHtml(false) : ""}
-            \${filterPython ? "" : '<article class="app-card st-APPLIED"><div class="app-card-top"><span class="app-company">Shopify</span></div><h3 class="app-role">Frontend Intern</h3><div class="chips"><span class="chip">React</span></div></article>'}
+            \${filterP < 0.99 ? \`<article class="app-card st-APPLIED" style="\${nonPyStyle}"><div class="app-card-top"><span class="app-company">Shopify</span></div><h3 class="app-role">Frontend Intern</h3><div class="chips"><span class="chip">React</span></div></article>\` : ""}
           </div>
         </section>
         <section class="column st-INTERVIEW \${isDragging ? "drop" : ""}">
-          <div class="column-head"><span class="dot"></span><h2>Interview</h2><span class="count">\${dropped ? 2 : 1}</span></div>
+          <div class="column-head"><span class="dot"></span><h2>Interview</h2><span class="count">\${dropped ? (filterPython ? 2 : 4) : (filterPython ? 1 : 3)}</span></div>
           <div class="column-cards">
+            \${isDragging ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:\${Math.round(108 * slotGrow)}px; opacity:\${slotGrow.toFixed(2)}; margin-bottom:\${Math.round(8 * slotGrow)}px;"></div>\` : ""}
             \${dropped ? stripeCardHtml(true) : ""}
+            \${forcePreDrag ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:108px; opacity:0; position:relative; pointer-events:none;"></div>\` : ""}
             <article class="app-card st-INTERVIEW">
               <div class="app-card-top"><span class="app-company">Cedar Grove</span></div>
               <h3 class="app-role">ML Engineering Intern</h3>
@@ -616,12 +688,12 @@ html, body {
         <section class="column st-OFFER">
           <div class="column-head"><span class="dot"></span><h2>Offer</h2><span class="count">\${filterPython ? 0 : 1}</span></div>
           <div class="column-cards">
-            \${filterPython ? "" : '<article class="app-card st-OFFER"><div class="app-card-top"><span class="app-company">Kitebird</span></div><h3 class="app-role">Platform Intern</h3><div class="chips"><span class="chip">Go</span></div></article>'}
+            \${filterP < 0.99 ? \`<article class="app-card st-OFFER" style="\${nonPyStyle}"><div class="app-card-top"><span class="app-company">Kitebird</span></div><h3 class="app-role">Platform Intern</h3><div class="chips"><span class="chip">Go</span></div></article>\` : ""}
           </div>
         </section>
       </div>
       \${isDragging ? \`
-        <article class="app-card st-APPLIED demo-drag-card" style="left:\${dragX}px; top:\${dragY}px;">
+        <article class="app-card st-APPLIED demo-drag-card" style="left:\${dragX.toFixed(1)}px; top:\${dragY.toFixed(1)}px; transform: translate(-50%, -50%) scale(\${dragScale.toFixed(4)}) rotate(\${dragRot.toFixed(2)}deg);">
           <div class="app-card-top"><span class="app-company">Stripe</span></div>
           <h3 class="app-role">Software Engineer Intern</h3>
           <div class="app-meta"><span>Seattle, WA</span></div>
@@ -632,27 +704,29 @@ html, body {
   }
 
   function getMockStats(t) {
-    const p = seg(t, 10.78, 10.98);
+    const p = seg(t, 12.55, 13.35, quintOut);
     return {
       score: Math.round(lerp(62, 88, p)),
       wpm: Math.round(lerp(122, 138, p))
     };
   }
 
-  function renderEntryPrepWorkflow(t) {
-    const scrollOffset = seg(t, 9.7, 10.45) * 195;
-    const practiced = t >= 10.78;
-    const mockReveal = seg(t, 10.48, 10.95);
+  function renderEntryPrepView(t, { forceScrollSettled = false } = {}) {
+    const scrollOffset = forceScrollSettled ? 188 : seg(t, 10.85, 11.95, cubicInOut) * 188;
+    const practiced = !forceScrollSettled && t >= 12.55;
+    const barWidth = practiced ? lerp(50, 67, seg(t, 12.55, 13.05, quintOut)) : 50;
+    const mockS = practiced ? clamp(springOut(t - 12.60, 260, 21), 0, 1.06) : 0;
+    const mockOpacity = practiced ? clamp((t - 12.60) / 0.25, 0, 1) : 0;
     const { score, wpm } = getMockStats(t);
 
     return \`
       <div style="transform: translateY(-\${scrollOffset.toFixed(1)}px);">
-        <article class="sheet-page" style="padding: 24px 32px 28px 74px;">
-          <div class="entry-head" style="margin-bottom: 14px;">
+        <article class="sheet-page" style="padding: 20px 30px 26px 68px;">
+          <div class="entry-head" style="margin-bottom: 12px;">
             <span class="entry-company">Stripe</span>
-            <h1 class="entry-role" style="font-size: 1.85rem;">Software Engineer Intern</h1>
+            <h1 class="entry-role" style="font-size: 1.78rem;">Software Engineer Intern</h1>
           </div>
-          <div class="stepper" style="margin-bottom: 18px;">
+          <div class="stepper" style="margin-bottom: 16px;">
             <div class="steps">
               <div class="step done st-SAVED"><span>Saved</span></div>
               <div class="step done st-APPLIED"><span>Applied</span></div>
@@ -660,11 +734,11 @@ html, body {
               <div class="step st-OFFER"><span>Offer</span></div>
             </div>
           </div>
-          <div class="entry-fields" style="margin-bottom: 14px;">
-            <div class="line-field"><span>Location</span><div style="padding:4px 0; font-weight:600;">Seattle, WA</div></div>
-            <div class="line-field"><span>Skills</span><div style="padding:4px 0; font-weight:600;">Python, Go, SQL</div></div>
+          <div class="entry-fields" style="margin-bottom: 12px;">
+            <div class="line-field"><span>Location</span><div style="padding:3px 0; font-weight:600;">Seattle, WA</div></div>
+            <div class="line-field"><span>Skills</span><div style="padding:3px 0; font-weight:600;">Python, Go, SQL</div></div>
           </div>
-          <section class="prep" style="margin-top: 12px; padding-top: 14px;">
+          <section class="prep" style="margin-top: 10px; padding-top: 12px;">
             <div class="prep-head">
               <div>
                 <h2 class="card-title">Role-matched interview prep</h2>
@@ -673,14 +747,14 @@ html, body {
               <span class="prep-summary">\${practiced ? "4 of 6 practiced" : "3 of 6 practiced"}</span>
             </div>
             <div class="prep-progress">
-              <div class="prep-bar"><i style="width:\${practiced ? 67 : 50}%"></i></div>
+              <div class="prep-bar"><i style="width:\${barWidth.toFixed(1)}%"></i></div>
             </div>
             <div class="prep-group" style="background: var(--card);">
               <ul class="prep-list" style="padding: 4px 14px;">
                 <li class="prep-q \${practiced ? "is-practiced" : ""}">
                   <span class="prep-text">Tell me about a system bottleneck you diagnosed and resolved (STAR).</span>
                   <div class="prep-actions">
-                    <button type="button" class="prep-mark practiced \${t >= 10.5 && t < 10.78 ? "is-hovered" : ""}" aria-pressed="\${practiced}">\${practiced ? "Practiced" : "Mark practiced"}</button>
+                    <button type="button" data-anchor="btn-mark-practiced" class="prep-mark practiced \${t >= 12.15 && t < 12.55 ? "is-hovered" : ""}" aria-pressed="\${practiced}">\${practiced ? "Practiced" : "Mark practiced"}</button>
                   </div>
                 </li>
                 <li class="prep-q">
@@ -691,13 +765,13 @@ html, body {
                 </li>
               </ul>
             </div>
-            <div class="demo-mock-card" style="opacity:\${mockReveal.toFixed(2)}; transform: translateY(\${((1 - mockReveal) * 12).toFixed(1)}px);">
+            <div class="demo-mock-card" style="opacity:\${mockOpacity.toFixed(3)}; transform: translateY(\${((1 - mockS) * 18).toFixed(1)}px) scale(\${lerp(0.96, 1, mockS).toFixed(3)});">
               <div class="demo-mock-score-box">
                 <strong>\${score} / 100</strong>
                 <span>Readiness</span>
               </div>
               <div>
-                <strong style="font-size: 0.96rem; color: var(--ink);">Timed Mock Interview Feedback</strong>
+                <strong style="font-size: 0.94rem; color: var(--ink);">Timed Mock Interview Feedback</strong>
                 <div class="demo-mock-metrics">
                   <span class="demo-metric-pill good">STAR structure complete</span>
                   <span class="demo-metric-pill">\${wpm} wpm</span>
@@ -711,8 +785,12 @@ html, body {
     \`;
   }
 
-  function renderInsightsWorkflow(t) {
-    const barP = seg(t, 15.45, 16.4);
+  function renderInsightsView(t) {
+    const f0 = seg(t, 15.80, 16.55, quintOut);
+    const f1 = seg(t, 15.88, 16.63, quintOut);
+    const f2 = seg(t, 15.96, 16.71, quintOut);
+    const f3 = seg(t, 16.04, 16.79, quintOut);
+
     return \`
       <header class="view-head">
         <div>
@@ -729,47 +807,87 @@ html, body {
         <article class="card kpi"><p>Prep practiced</p><strong>88%</strong><span>STAR complete</span></article>
       </section>
       <div class="insight-grid">
-        <section class="card">
+        <section class="card" data-anchor="funnel-card">
           <div class="card-head"><div><h2 class="card-title">Response-Rate Conversion Funnel</h2><p class="card-note">Stage progression across sent applications</p></div></div>
           <div class="funnel">
-            <div class="funnel-row"><span>Saved</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(100 * barP).toFixed(1)}%; background: var(--st-saved);"></div><span class="funnel-value">24 <small>(100%)</small></span></div></div>
-            <div class="funnel-row"><span>Applied</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(75 * barP).toFixed(1)}%; background: var(--st-applied);"></div><span class="funnel-value">18 <small>(75%)</small></span></div></div>
-            <div class="funnel-row"><span>Interview</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(33 * barP).toFixed(1)}%; background: var(--st-interview);"></div><span class="funnel-value">6 <small>(33%)</small></span></div></div>
-            <div class="funnel-row"><span>Offer</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(14 * barP).toFixed(1)}%; background: var(--st-offer);"></div><span class="funnel-value">2 <small>(11%)</small></span></div></div>
+            <div class="funnel-row"><span>Saved</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(100 * f0).toFixed(1)}%; background: var(--st-saved);"></div><span class="funnel-value">24 <small>(100%)</small></span></div></div>
+            <div class="funnel-row"><span>Applied</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(75 * f1).toFixed(1)}%; background: var(--st-applied);"></div><span class="funnel-value">18 <small>(75%)</small></span></div></div>
+            <div class="funnel-row"><span>Interview</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(33 * f2).toFixed(1)}%; background: var(--st-interview);"></div><span class="funnel-value">6 <small>(33%)</small></span></div></div>
+            <div class="funnel-row"><span>Offer</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(14 * f3).toFixed(1)}%; background: var(--st-offer);"></div><span class="funnel-value">2 <small>(11%)</small></span></div></div>
           </div>
         </section>
         <section class="card">
           <div class="card-head"><div><h2 class="card-title">Top Skills in Interviews</h2><p class="card-note">Highest callback rate by tag</p></div></div>
           <div class="skill-bars">
-            <div class="skill-bar"><span>Python</span><i style="width:\${(92 * barP).toFixed(1)}%"></i><b>9</b></div>
-            <div class="skill-bar"><span>Go</span><i style="width:\${(72 * barP).toFixed(1)}%"></i><b>7</b></div>
-            <div class="skill-bar"><span>SQL</span><i style="width:\${(64 * barP).toFixed(1)}%"></i><b>6</b></div>
-            <div class="skill-bar"><span>TypeScript</span><i style="width:\${(52 * barP).toFixed(1)}%"></i><b>5</b></div>
+            <div class="skill-bar"><span>Python</span><i style="width:\${(92 * f0).toFixed(1)}%"></i><b>9</b></div>
+            <div class="skill-bar"><span>Go</span><i style="width:\${(72 * f1).toFixed(1)}%"></i><b>7</b></div>
+            <div class="skill-bar"><span>SQL</span><i style="width:\${(64 * f2).toFixed(1)}%"></i><b>6</b></div>
+            <div class="skill-bar"><span>TypeScript</span><i style="width:\${(52 * f3).toFixed(1)}%"></i><b>5</b></div>
           </div>
         </section>
       </div>
     \`;
   }
 
-  function renderModal(t) {
+  function renderModal(t, { forceOpen = false } = {}) {
     const modal = document.getElementById("demo-modal");
-    if (t < 0.72 || t >= 4.45) {
-      modal.classList.remove("is-open");
+    const openT = 0.62;
+    const closeT = 3.92;
+
+    if (!forceOpen && (t < openT || t >= closeT + 0.34)) {
+      modal.style.opacity = "0";
       modal.innerHTML = "";
       return;
     }
-    modal.classList.add("is-open");
 
-    const typingP = clamp((t - 1.8) / 0.8, 0, 1);
+    let backdropOpacity = 1;
+    let cardScale = 1;
+    let cardY = 0;
+
+    if (!forceOpen) {
+      if (t < openT + 0.36) {
+        const dt = t - openT;
+        const sp = springOut(dt, 280, 22);
+        backdropOpacity = clamp(dt / 0.22, 0, 1);
+        cardScale = lerp(0.92, 1, sp);
+        cardY = lerp(14, 0, sp);
+      } else if (t >= closeT) {
+        const p = seg(t, closeT, closeT + 0.32, quintOut);
+        backdropOpacity = 1 - p;
+        cardScale = lerp(1, 0.94, p);
+        cardY = lerp(0, 10, p);
+      }
+    }
+
+    const typingP = forceOpen ? 1 : seg(t, 1.15, 2.15, x => x);
     const typedCount = Math.round(typingP * QUICK_URL.length);
     const typedText = QUICK_URL.slice(0, typedCount);
-    const filled = t >= 2.72;
-    const flash = t >= 2.72 && t < 3.45;
-    const saveHover = t >= 3.7 && t < 4.05;
-    const fillHover = t >= 2.55 && t < 2.72;
 
+    const fillClickT = 2.42;
+    const filled = forceOpen || t >= fillClickT + 0.04;
+    const fillHover = !forceOpen && t >= 2.25 && t < fillClickT;
+    const saveHover = !forceOpen && t >= 3.55 && t < closeT;
+
+    const fieldReveal = (idx) => {
+      if (forceOpen) return { op: 1, flash: false };
+      const start = fillClickT + 0.05 + idx * 0.065;
+      if (t < start) return { op: 0, flash: false };
+      return {
+        op: clamp((t - start) / 0.16, 0, 1),
+        flash: t >= start && t < start + 0.72
+      };
+    };
+
+    const fields = [
+      { label: "Company", val: "Stripe", empty: "e.g. Shopify", idx: 0 },
+      { label: "Role", val: "Software Engineer Intern", empty: "e.g. Backend Intern", idx: 1 },
+      { label: "Location", val: "Seattle, WA", empty: "City or Remote", idx: 2 },
+      { label: "Skills", val: "Python, Go, SQL", empty: "Comma separated", idx: 3 }
+    ];
+
+    modal.style.opacity = backdropOpacity.toFixed(3);
     modal.innerHTML = \`
-      <div class="demo-modal-card">
+      <div class="demo-modal-card" style="transform: translateY(\${cardY.toFixed(1)}px) scale(\${cardScale.toFixed(4)});">
         <header class="sheet-head">
           <div>
             <p class="eyebrow">New page</p>
@@ -780,60 +898,290 @@ html, body {
           <div class="quickfill-bar">
             <span class="field-label">Quick fill from link or job text</span>
             <div class="quickfill-row">
-              <div class="demo-quickfill-display \${t >= 1.75 && t < 2.72 ? "is-focused" : ""}">
-                \${typedCount > 0 ? \`<span>\${typedText}</span>\${typingP < 1 ? '<span class="demo-typing-caret"></span>' : ''}\` : '<span class="demo-quickfill-placeholder">Paste a job URL or title...</span>'}
+              <div class="demo-quickfill-display \${forceOpen || (t >= 1.05 && t < fillClickT) ? "is-focused" : ""}" data-anchor="quickfill-input">
+                \${typedCount > 0 ? \`<span>\${typedText}</span>\${!forceOpen && typingP < 1 ? '<span class="demo-typing-caret"></span>' : ''}\` : '<span class="demo-quickfill-placeholder">Paste a job URL or title...</span>'}
               </div>
-              <button class="button small \${fillHover ? "is-hovered" : ""}" type="button">Fill</button>
+              <button class="button small \${fillHover ? "is-hovered" : ""}" data-anchor="quickfill-fill" type="button">Fill</button>
             </div>
           </div>
           <div class="field-grid">
-            <div class="field">
-              <span class="field-label">Company</span>
-              <div class="demo-field-box \${filled ? (flash ? "demo-autofill-flash" : "") : "is-empty"}">\${filled ? "Stripe" : "e.g. Shopify"}</div>
-            </div>
-            <div class="field">
-              <span class="field-label">Role</span>
-              <div class="demo-field-box \${filled ? (flash ? "demo-autofill-flash" : "") : "is-empty"}">\${filled ? "Software Engineer Intern" : "e.g. Backend Intern"}</div>
-            </div>
-            <div class="field">
-              <span class="field-label">Location</span>
-              <div class="demo-field-box \${filled ? (flash ? "demo-autofill-flash" : "") : "is-empty"}">\${filled ? "Seattle, WA" : "City or Remote"}</div>
-            </div>
-            <div class="field">
-              <span class="field-label">Skills</span>
-              <div class="demo-field-box \${filled ? (flash ? "demo-autofill-flash" : "") : "is-empty"}">\${filled ? "Python, Go, SQL" : "Comma separated"}</div>
-            </div>
+            \${fields.map(f => {
+              const rev = fieldReveal(f.idx);
+              const showVal = filled && rev.op > 0;
+              return \`
+                <div class="field">
+                  <span class="field-label">\${f.label}</span>
+                  <div class="demo-field-box \${showVal ? (rev.flash ? "demo-autofill-flash" : "") : "is-empty"}" style="\${showVal && rev.op < 1 ? \`opacity:\${rev.op.toFixed(2)}; transform:translateY(\${((1 - rev.op) * 4).toFixed(1)}px);\` : ""}">\${showVal ? f.val : f.empty}</div>
+                </div>
+              \`;
+            }).join("")}
           </div>
         </div>
         <footer class="sheet-foot">
           <button class="button ghost" type="button">Cancel</button>
-          <button class="button primary \${saveHover ? "is-hovered" : ""}" type="button">Save to notebook</button>
+          <button class="button primary \${saveHover ? "is-hovered" : ""}" data-anchor="modal-save" type="button">Save to notebook</button>
         </footer>
       </div>
     \`;
   }
 
-  function cameraTransform(t) {
-    // Smooth zoom focus transitions on the paper workspace while keeping the sidebar crisp
-    if (t >= 5.5 && t < 7.3) {
-      const z = Math.sin(clamp((t - 5.5) / 1.8, 0, 1) * Math.PI);
-      return \`scale(\${(1 + 0.04 * z).toFixed(4)})\`;
+  // Camera keyframes: [time, scale, focusX, focusY] in unzoomed stage coords
+  const CAMERA_KEYS = [
+    [0.00, 1.00, 640, 360],
+    [0.58, 1.04, 580, 340],
+    [1.08, 1.35, 735, 335], // Modal quickfill & fields
+    [3.50, 1.32, 745, 385], // Save button
+    [4.45, 1.06, 520, 340], // Pull out to sidebar Board tab
+    [5.20, 1.04, 560, 350],
+    [5.85, 1.36, 650, 290], // Zoom into Applied + Interview columns
+    [7.60, 1.32, 760, 285], // Card settled in Interview
+    [8.30, 1.30, 960, 165], // Pan up-right to Python filter chip
+    [9.40, 1.36, 785, 255], // Back to Stripe card in Interview
+    [10.45, 1.08, 680, 340], // Entry page overview
+    [11.80, 1.40, 770, 375], // Macro zoom onto Role-matched interview prep + Mock box
+    [14.80, 1.34, 750, 390],
+    [15.40, 1.08, 490, 360], // Pull back to sidebar Insights
+    [16.15, 1.30, 730, 415], // Zoom onto Conversion Funnel & Top Skills
+    [17.65, 1.08, 520, 350], // Pull back to sidebar Today
+    [18.55, 1.26, 610, 395], // Focus on Deadline Radar (.ics alerts)
+    [19.75, 1.24, 610, 395],
+    [20.75, 1.00, 640, 360], // Exact t=0.0 resting frame for invisible loop
+    [20.80, 1.00, 640, 360]
+  ];
+
+  function computeCamera(t) {
+    let scale = 1, fx = 640, fy = 360;
+    for (let i = 0; i < CAMERA_KEYS.length - 1; i++) {
+      const [t0, s0, x0, y0] = CAMERA_KEYS[i];
+      const [t1, s1, x1, y1] = CAMERA_KEYS[i + 1];
+      if (t >= t0 && t <= t1) {
+        const p = seg(t, t0, t1, cubicInOut);
+        scale = lerp(s0, s1, p);
+        fx = lerp(x0, x1, p);
+        fy = lerp(y0, y1, p);
+        break;
+      }
     }
-    if (t >= 11.2 && t < 13.3) {
-      const z = Math.sin(clamp((t - 11.2) / 2.1, 0, 1) * Math.PI);
-      return \`scale(\${(1 + 0.045 * z).toFixed(4)}) translate(0px, \${(-12 * z).toFixed(1)}px)\`;
-    }
-    return "scale(1) translate(0px, 0px)";
+    const tx = 640 - fx * scale;
+    const ty = 360 - fy * scale;
+    return { scale, tx, ty };
   }
 
+  // Pre-measured DOM anchor map populated once at init
+  let ANCHORS = {};
+  function measureAnchors() {
+    const camEl = document.getElementById("demo-camera");
+    camEl.style.transform = "translate(0px, 0px) scale(1)";
+    const viewIn = document.getElementById("demo-view-in");
+    const viewOut = document.getElementById("demo-view-out");
+    viewOut.style.display = "none";
+
+    const capture = (root = document) => {
+      for (const el of root.querySelectorAll("[data-anchor]")) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          ANCHORS[el.dataset.anchor] = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }
+      }
+    };
+
+    // 1. Today + Sidebar
+    viewIn.innerHTML = renderTodayView(0);
+    renderModal(0);
+    capture();
+
+    // 2. Modal open
+    renderModal(3.2, { forceOpen: true });
+    capture();
+    renderModal(0);
+
+    // 3. Board pre-drag (save Stripe card + Interview drop slot)
+    viewIn.innerHTML = renderBoardView(5.6, { forcePreDrag: true });
+    capture();
+    const pageRect = document.getElementById("demo-page").getBoundingClientRect();
+    if (ANCHORS["card-stripe-applied"]) {
+      window.__BOARD_DRAG_START = {
+        x: ANCHORS["card-stripe-applied"].x - pageRect.left,
+        y: ANCHORS["card-stripe-applied"].y - pageRect.top
+      };
+    }
+    if (ANCHORS["slot-interview"]) {
+      window.__BOARD_DRAG_END = {
+        x: ANCHORS["slot-interview"].x - pageRect.left,
+        y: ANCHORS["slot-interview"].y - pageRect.top
+      };
+    }
+
+    // 4. Board post-drop
+    viewIn.innerHTML = renderBoardView(7.8, { forcePostDrop: true });
+    capture();
+
+    // 5. Entry prep scrolled
+    viewIn.innerHTML = renderEntryPrepView(12.2, { forceScrollSettled: true });
+    capture();
+
+    // 6. Insights
+    viewIn.innerHTML = renderInsightsView(16.8);
+    capture();
+
+    // Reset
+    viewIn.innerHTML = "";
+  }
+
+  function pt(name, dx = 0, dy = 0) {
+    const a = ANCHORS[name] || { x: 640, y: 360 };
+    return { x: a.x + dx, y: a.y + dy };
+  }
+
+  function quadBezier(p0, p1, t, arcSign = 1) {
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 4) return { x: lerp(p0.x, p1.x, t), y: lerp(p0.y, p1.y, t) };
+    const offset = Math.min(44, dist * 0.16) * arcSign;
+    const cx = (p0.x + p1.x) / 2 + (-dy / dist) * offset;
+    const cy = (p0.y + p1.y) / 2 + (dx / dist) * offset;
+    const u = 1 - t;
+    return {
+      x: u * u * p0.x + 2 * u * t * cx + t * t * p1.x,
+      y: u * u * p0.y + 2 * u * t * cy + t * t * p1.y
+    };
+  }
+
+  function buildCursorTimeline() {
+    // Each segment: [t0, t1, targetA, targetB, arcSign, type]
+    // Hold segments have same targetA === targetB
+    const rest = { x: 740, y: 380 };
+    const newBtn = pt("nav-new");
+    const qInput = pt("quickfill-input", -30, 0);
+    const qFill = pt("quickfill-fill");
+    const mSave = pt("modal-save");
+    const tabBoard = pt("nav-board");
+    const cardApplied = pt("card-stripe-applied");
+    const slotInterview = pt("slot-interview");
+    const chipPy = pt("chip-python");
+    const cardInterview = pt("card-stripe-interview");
+    const btnMark = pt("btn-mark-practiced");
+    const tabInsights = pt("nav-insights");
+    const funnel = pt("funnel-card", -20, 10);
+    const tabToday = pt("nav-today");
+    const radar = pt("radar-card", 10, -18);
+
+    return { rest, newBtn, qInput, qFill, mSave, tabBoard, cardApplied, slotInterview, chipPy, cardInterview, btnMark, tabInsights, funnel, tabToday, radar };
+  }
+
+  let C_PTS = null;
+  function cursorState(t) {
+    const c = C_PTS;
+    const segs = [
+      [0.00, 0.48, c.rest, c.newBtn, 1, "arrow"],
+      [0.48, 0.66, c.newBtn, c.newBtn, 0, "arrow"],
+      [0.66, 1.05, c.newBtn, c.qInput, -1, "arrow"],
+      [1.05, 1.98, c.qInput, c.qInput, 0, "ibeam"],
+      [1.98, 2.28, c.qInput, c.qFill, -1, "arrow"],
+      [2.28, 2.48, c.qFill, c.qFill, 0, "arrow"],
+      [2.48, 3.10, c.qFill, { x: 640, y: 455 }, 1, "arrow"],
+      [3.10, 3.55, { x: 640, y: 455 }, c.mSave, 1, "arrow"],
+      [3.55, 3.96, c.mSave, c.mSave, 0, "arrow"],
+      [3.96, 4.92, c.mSave, c.tabBoard, -1, "arrow"],
+      [4.92, 5.20, c.tabBoard, c.tabBoard, 0, "arrow"],
+      [5.20, 5.82, c.tabBoard, c.cardApplied, 1, "arrow"],
+      [5.82, 6.10, c.cardApplied, c.cardApplied, 0, "grab"],
+      [6.10, 7.45, c.cardApplied, c.slotInterview, -1, "grabbing"],
+      [7.45, 7.72, c.slotInterview, c.slotInterview, 0, "grab"],
+      [7.72, 8.38, c.slotInterview, c.chipPy, -1, "arrow"],
+      [8.38, 8.72, c.chipPy, c.chipPy, 0, "arrow"],
+      [8.72, 9.65, c.chipPy, c.cardInterview, 1, "arrow"],
+      [9.65, 10.38, c.cardInterview, c.cardInterview, 0, "arrow"],
+      [10.38, 12.15, c.cardInterview, c.btnMark, -1, "arrow"],
+      [12.15, 12.62, c.btnMark, c.btnMark, 0, "arrow"],
+      [12.62, 13.60, c.btnMark, { x: 650, y: 480 }, 1, "arrow"],
+      [13.60, 14.85, { x: 650, y: 480 }, { x: 650, y: 480 }, 0, "arrow"],
+      [14.85, 15.32, { x: 650, y: 480 }, c.tabInsights, -1, "arrow"],
+      [15.32, 15.60, c.tabInsights, c.tabInsights, 0, "arrow"],
+      [15.60, 16.95, c.tabInsights, c.funnel, 1, "arrow"],
+      [16.95, 17.55, c.funnel, c.funnel, 0, "arrow"],
+      [17.55, 17.98, c.funnel, c.tabToday, -1, "arrow"],
+      [17.98, 18.22, c.tabToday, c.tabToday, 0, "arrow"],
+      [18.22, 19.10, c.tabToday, c.radar, 1, "arrow"],
+      [19.10, 19.90, c.radar, c.radar, 0, "arrow"],
+      [19.90, 20.80, c.radar, c.rest, -1, "arrow"]
+    ];
+
+    const clicks = [0.62, 1.08, 2.42, 3.90, 5.14, 8.65, 10.30, 12.55, 15.50, 18.14];
+    let pressDip = 1;
+    for (const ct of clicks) {
+      if (t >= ct - 0.06 && t <= ct + 0.14) {
+        const dp = t < ct ? (t - (ct - 0.06)) / 0.06 : 1 - (t - ct) / 0.14;
+        pressDip = 1 - 0.16 * clamp(dp, 0, 1);
+      }
+    }
+
+    for (const [t0, t1, a, b, sign, kind] of segs) {
+      if (t >= t0 && t <= t1) {
+        if (a === b) return { x: a.x, y: a.y, kind, scale: pressDip };
+        const p = seg(t, t0, t1, quintInOut);
+        const pos = kind === "grabbing"
+          ? { x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p) - Math.sin(p * Math.PI) * 26 }
+          : quadBezier(a, b, p, sign);
+        return { x: pos.x, y: pos.y, kind, scale: pressDip };
+      }
+    }
+    return { x: c.rest.x, y: c.rest.y, kind: "arrow", scale: 1 };
+  }
+
+  function activeRipple(t) {
+    const clicks = [
+      [0.62, C_PTS.newBtn],
+      [2.42, C_PTS.qFill],
+      [3.90, C_PTS.mSave],
+      [5.14, C_PTS.tabBoard],
+      [7.45, C_PTS.slotInterview],
+      [8.65, C_PTS.chipPy],
+      [10.30, C_PTS.cardInterview],
+      [12.55, C_PTS.btnMark],
+      [15.50, C_PTS.tabInsights],
+      [18.14, C_PTS.tabToday]
+    ];
+    for (const [ct, ptObj] of clicks) {
+      if (t >= ct && t <= ct + 0.42) {
+        const p = seg(t, ct, ct + 0.42, quintOut);
+        return { x: ptObj.x, y: ptObj.y, scale: 0.45 + p * 1.1, opacity: (1 - p) * 0.9 };
+      }
+    }
+    return null;
+  }
+
+  function renderViewForTime(t) {
+    if (t < 5.2) return { id: "today0", html: renderTodayView(t) };
+    if (t < 10.4) return { id: "board", html: renderBoardView(t) };
+    if (t < 15.6) return { id: "prep", html: renderEntryPrepView(t) };
+    if (t < 18.2) return { id: "insights", html: renderInsightsView(t) };
+    // Seamless wrap: crossfade back to exact t=0.0 count during final 0.45s
+    if (t >= 20.35) {
+      return { id: "today0_loop", html: renderTodayView(0, { highlightRadar: false, countOverride: false }) };
+    }
+    return { id: "today1", html: renderTodayView(t, { highlightRadar: t >= 18.3 && t < 20.1, countOverride: true }) };
+  }
+
+  const TRANSITIONS = [
+    { at: 5.20, dur: 0.36, outHtml: (t) => renderTodayView(5.19), inId: "board" },
+    { at: 10.40, dur: 0.36, outHtml: (t) => renderBoardView(10.39), inId: "prep" },
+    { at: 15.60, dur: 0.36, outHtml: (t) => renderEntryPrepView(15.59), inId: "insights" },
+    { at: 18.20, dur: 0.36, outHtml: (t) => renderInsightsView(18.19), inId: "today1" },
+    { at: 20.35, dur: 0.40, outHtml: (t) => renderTodayView(20.34, { highlightRadar: false, countOverride: true }), inId: "today0_loop" }
+  ];
+
+  let lastCursorKind = "";
   window.__setDemoTime = function (t) {
-    const view = document.getElementById("demo-view");
+    const viewOut = document.getElementById("demo-view-out");
+    const viewIn = document.getElementById("demo-view-in");
     const navToday = document.getElementById("nav-today");
     const navBoard = document.getElementById("nav-board");
     const navInsights = document.getElementById("nav-insights");
     const navNew = document.getElementById("nav-new-btn");
+    const boardCount = document.getElementById("nav-board-count");
     const toast = document.getElementById("demo-toast");
-    const callout = document.getElementById("demo-callout");
 
     [navToday, navBoard, navInsights].forEach(el => {
       el.removeAttribute("aria-current");
@@ -841,55 +1189,84 @@ html, body {
     });
     navNew.classList.remove("is-hovered");
 
-    if (t < 4.5) {
+    // Sidebar state
+    boardCount.textContent = (t >= 4.05 && t < 20.4) ? "11" : "10";
+    if (t < 5.2) {
       navToday.setAttribute("aria-current", "page");
-      if (t >= 0.45 && t < 0.72) navNew.classList.add("is-hovered");
-      view.innerHTML = renderTodayWorkflow(t);
-      toast.style.display = (t >= 4.02 && t < 4.5) ? "flex" : "none";
-      toast.textContent = "Stripe saved to notebook";
-      const sub = t < 1.7 ? "Open quick-fill clipper" : t < 2.7 ? "Parsing Greenhouse URL..." : "4 fields snapped into place";
-      callout.innerHTML = \`<span class="demo-callout-step">01</span><span>1-Click Job Clipper</span><span class="demo-callout-sub">\${sub}</span>\`;
-    } else if (t < 9.0) {
+      if (t >= 0.42 && t < 0.66) navNew.classList.add("is-hovered");
+      if (t >= 4.85 && t < 5.20) navBoard.classList.add("is-hovered");
+    } else if (t < 15.6) {
       navBoard.setAttribute("aria-current", "page");
-      if (t >= 4.65 && t < 4.88) navBoard.classList.add("is-hovered");
-      view.innerHTML = renderBoardWorkflow(t);
-      toast.style.display = "none";
-      const sub = t < 6.8 ? "Dragging Stripe -> Interview" : t < 8.1 ? "Dated history stamp added" : "Filtered by skill: Python";
-      callout.innerHTML = \`<span class="demo-callout-step">02</span><span>Kanban Pipeline Board</span><span class="demo-callout-sub">\${sub}</span>\`;
-    } else if (t < 13.5) {
-      navBoard.setAttribute("aria-current", "page");
-      view.innerHTML = renderEntryPrepWorkflow(t);
-      toast.style.display = "none";
-      const { score, wpm } = getMockStats(t);
-      const sub = t < 10.78 ? "Role-matched STAR prompts" : \`Mock score: \${score} / 100 - \${wpm} wpm\`;
-      callout.innerHTML = \`<span class="demo-callout-step">03</span><span>Interview Prep &amp; Mock</span><span class="demo-callout-sub">\${sub}</span>\`;
+      if (t >= 15.25 && t < 15.60) navInsights.classList.add("is-hovered");
+    } else if (t < 18.2) {
+      navInsights.setAttribute("aria-current", "page");
+      if (t >= 17.90 && t < 18.20) navToday.classList.add("is-hovered");
     } else {
-      if (t < 15.4) {
-        navToday.setAttribute("aria-current", "page");
-        view.innerHTML = renderTodayWorkflow(t, { highlightRadar: true });
-        callout.innerHTML = \`<span class="demo-callout-step">04</span><span>Deadlines &amp; Insights</span><span class="demo-callout-sub">Upcoming radar &amp; .ics alerts</span>\`;
-      } else {
-        navInsights.setAttribute("aria-current", "page");
-        view.innerHTML = renderInsightsWorkflow(t);
-        callout.innerHTML = \`<span class="demo-callout-step">04</span><span>Deadlines &amp; Insights</span><span class="demo-callout-sub">42% response conversion funnel</span>\`;
-      }
+      navToday.setAttribute("aria-current", "page");
+    }
+
+    // Dual-layer view crossfade
+    const currentView = renderViewForTime(t);
+    const activeTx = TRANSITIONS.find(tx => t >= tx.at && t < tx.at + tx.dur && currentView.id === tx.inId);
+    if (activeTx) {
+      const p = seg(t, activeTx.at, activeTx.at + activeTx.dur, quintOut);
+      viewOut.style.display = "block";
+      viewOut.innerHTML = activeTx.outHtml(t);
+      viewOut.style.opacity = (1 - p).toFixed(3);
+      viewOut.style.transform = \`translateY(\${(-10 * p).toFixed(1)}px) scale(\${(1 - 0.015 * p).toFixed(4)})\`;
+
+      viewIn.innerHTML = currentView.html;
+      viewIn.style.opacity = p.toFixed(3);
+      viewIn.style.transform = \`translateY(\${(14 * (1 - p)).toFixed(1)}px) scale(\${lerp(0.99, 1, p).toFixed(4)})\`;
+    } else {
+      viewOut.style.display = "none";
+      viewOut.innerHTML = "";
+      viewIn.innerHTML = currentView.html;
+      viewIn.style.opacity = "1";
+      viewIn.style.transform = "none";
+    }
+
+    // Toast animation (4.05 -> 5.05)
+    if (t >= 4.05 && t < 5.05) {
+      toast.style.display = "flex";
+      const inP = t < 4.32 ? springOut(t - 4.05, 280, 22) : 1;
+      const outP = t >= 4.78 ? seg(t, 4.78, 5.05, quintOut) : 0;
+      toast.textContent = "Stripe saved to notebook";
+      toast.style.opacity = (clamp(inP * 1.4, 0, 1) * (1 - outP)).toFixed(3);
+      toast.style.transform = \`translateY(\${((1 - inP) * 14 + outP * 10).toFixed(1)}px)\`;
+    } else {
       toast.style.display = "none";
     }
 
     renderModal(t);
 
-    document.getElementById("demo-camera").style.transform = cameraTransform(t);
+    // Camera transform
+    const cam = computeCamera(t);
+    document.getElementById("demo-camera").style.transform =
+      \`translate(\${cam.tx.toFixed(2)}px, \${cam.ty.toFixed(2)}px) scale(\${cam.scale.toFixed(4)})\`;
 
-    const pos = cursorPath(t);
-    const cursor = document.getElementById("demo-cursor");
-    cursor.style.transform = \`translate(\${pos.x.toFixed(1)}px, \${pos.y.toFixed(1)}px)\`;
+    // Cursor mapped through exact active camera transform so it stays crisp and pixel-accurate
+    const cur = cursorState(t);
+    const screenX = cur.x * cam.scale + cam.tx;
+    const screenY = cur.y * cam.scale + cam.ty;
+    const cursorEl = document.getElementById("demo-cursor");
+    const spec = CURSORS[cur.kind] || CURSORS.arrow;
+    if (cur.kind !== lastCursorKind) {
+      cursorEl.innerHTML = spec.svg;
+      cursorEl.style.transformOrigin = \`\${spec.hotspot[0]}px \${spec.hotspot[1]}px\`;
+      lastCursorKind = cur.kind;
+    }
+    cursorEl.style.transform = \`translate(\${(screenX - spec.hotspot[0]).toFixed(2)}px, \${(screenY - spec.hotspot[1]).toFixed(2)}px) scale(\${cur.scale.toFixed(3)})\`;
 
+    // Ripple mapped through camera transform
     const rip = activeRipple(t);
     const rippleEl = document.getElementById("demo-ripple");
     if (rip) {
+      const rx = rip.x * cam.scale + cam.tx;
+      const ry = rip.y * cam.scale + cam.ty;
       rippleEl.style.display = "block";
-      rippleEl.style.left = \`\${rip.x.toFixed(1)}px\`;
-      rippleEl.style.top = \`\${rip.y.toFixed(1)}px\`;
+      rippleEl.style.left = \`\${rx.toFixed(1)}px\`;
+      rippleEl.style.top = \`\${ry.toFixed(1)}px\`;
       rippleEl.style.transform = \`scale(\${rip.scale.toFixed(3)})\`;
       rippleEl.style.opacity = rip.opacity.toFixed(3);
     } else {
@@ -897,6 +1274,8 @@ html, body {
     }
   };
 
+  measureAnchors();
+  C_PTS = buildCursorTimeline();
   window.__setDemoTime(0);
 })();
 </script>
@@ -904,53 +1283,70 @@ html, body {
 </html>`;
 }
 
-function encodeWebm(ffmpegBin, framePaths, tempDir, outPath) {
-  const mjpegPath = path.join(tempDir, "frames.mjpeg");
-  fs.writeFileSync(mjpegPath, Buffer.concat(framePaths.map(p => fs.readFileSync(p))));
-  const bitrates = [520, 680, 400, 820];
+function encodeWebm(ffmpegBin, frameBuffers, framesDir, outPath) {
+  const mjpegBuffer = Buffer.concat(frameBuffers);
+  const passLog = path.join(framesDir, "vpx_2pass");
+  const webmTargetCap = 1200 * 1024;
+  const profiles = [
+    { outFps: FPS, kbps: 360, max: 480, gop: 240, lag: 25 },
+    { outFps: 30, kbps: 360, max: 480, gop: 120, lag: 20 },
+    { outFps: 30, kbps: 300, max: 400, gop: 120, lag: 20 }
+  ];
 
-  for (const kbps of bitrates) {
-    const res = spawnSync(
+  for (const { outFps, kbps, max, gop, lag } of profiles) {
+    const commonArgs = [
+      "-y",
+      "-f", "image2pipe",
+      "-framerate", String(FPS),
+      "-vcodec", "mjpeg",
+      "-i", "pipe:0",
+      "-vf", `scale=${OUT_WIDTH}:${OUT_HEIGHT}:flags=lanczos`,
+      "-r", String(outFps),
+      "-c:v", "libvpx",
+      "-b:v", `${kbps}k`,
+      "-minrate", "100k",
+      "-maxrate", `${max}k`,
+      "-bufsize", "700k",
+      "-qmin", "10",
+      "-qmax", "63",
+      "-g", String(gop),
+      "-pix_fmt", "yuv420p",
+      "-deadline", "good",
+      "-cpu-used", "2",
+      "-auto-alt-ref", "1",
+      "-lag-in-frames", String(lag),
+      "-passlogfile", passLog
+    ];
+    const pass1 = spawnSync(
       ffmpegBin,
-      [
-        "-y",
-        "-f", "image2pipe",
-        "-vcodec", "mjpeg",
-        "-r", String(FPS),
-        "-i", mjpegPath,
-        "-c:v", "libvpx",
-        "-b:v", `${kbps}k`,
-        "-minrate", `${Math.round(kbps * 0.6)}k`,
-        "-maxrate", `${Math.round(kbps * 1.35)}k`,
-        "-crf", "16",
-        "-qmin", "6",
-        "-qmax", "36",
-        "-pix_fmt", "yuv420p",
-        "-deadline", "good",
-        "-cpu-used", "2",
-        "-auto-alt-ref", "0",
-        "-f", "webm",
-        outPath
-      ],
-      { encoding: "utf8" }
+      [...commonArgs, "-pass", "1", "-f", "webm", "/dev/null"],
+      { input: mjpegBuffer, maxBuffer: 64 * 1024 * 1024 }
     );
-    if (res.status !== 0) {
-      throw new Error(`ffmpeg WebM encoding failed: ${res.stderr?.toString()}`);
+    if (pass1.status !== 0) {
+      throw new Error(`ffmpeg WebM pass 1 failed: ${pass1.stderr?.toString()}`);
+    }
+    const pass2 = spawnSync(
+      ffmpegBin,
+      [...commonArgs, "-pass", "2", "-f", "webm", outPath],
+      { input: mjpegBuffer, maxBuffer: 64 * 1024 * 1024 }
+    );
+    if (pass2.status !== 0) {
+      throw new Error(`ffmpeg WebM pass 2 failed: ${pass2.stderr?.toString()}`);
     }
     const size = fs.statSync(outPath).size;
-    console.log(`WebM bitrate=${kbps}k -> ${size} bytes`);
-    if (size >= MIN_VIDEO_BYTES && size <= MAX_VIDEO_BYTES) {
+    console.log(`WebM 2-pass ${outFps}fps bitrate=${kbps}k -> ${size} bytes`);
+    if (size >= MIN_VIDEO_BYTES && size <= webmTargetCap) {
       return size;
     }
   }
   const finalSize = fs.statSync(outPath).size;
   if (finalSize > MAX_VIDEO_BYTES) {
-    throw new Error(`WebM exceeded 1.2 MB (${finalSize} bytes)`);
+    throw new Error(`WebM exceeded ${MAX_VIDEO_BYTES} bytes (${finalSize} bytes)`);
   }
   return finalSize;
 }
 
-function encodeMp4WithSwift(framesDir, outPath) {
+function encodeMp4WithSwift(frameBuffers, framesDir, outPath) {
   const swiftScript = path.join(framesDir, "encode_mp4.swift");
   const swiftSource = `
 import AVFoundation
@@ -959,11 +1355,12 @@ import Foundation
 import ImageIO
 
 let args = CommandLine.arguments
-let framesDir = args[1]
-let outPath = args[2]
-let frameCount = Int(args[3])!
-let fps = Int32(args[4])!
-let bitrate = Int(args[5])!
+let outPath = args[1]
+let frameCount = Int(args[2])!
+let fps = Int32(args[3])!
+let bitrate = Int(args[4])!
+let outWidth = ${OUT_WIDTH}
+let outHeight = ${OUT_HEIGHT}
 
 let outURL = URL(fileURLWithPath: outPath)
 try? FileManager.default.removeItem(at: outURL)
@@ -973,11 +1370,11 @@ writer.shouldOptimizeForNetworkUse = true
 
 let settings: [String: Any] = [
   AVVideoCodecKey: AVVideoCodecType.h264,
-  AVVideoWidthKey: 1280,
-  AVVideoHeightKey: 720,
+  AVVideoWidthKey: outWidth,
+  AVVideoHeightKey: outHeight,
   AVVideoCompressionPropertiesKey: [
     AVVideoAverageBitRateKey: bitrate,
-    AVVideoMaxKeyFrameIntervalKey: 24,
+    AVVideoMaxKeyFrameIntervalKey: 180,
     AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
   ]
 ]
@@ -987,8 +1384,8 @@ input.expectsMediaDataInRealTime = false
 
 let attrs: [String: Any] = [
   kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-  kCVPixelBufferWidthKey as String: 1280,
-  kCVPixelBufferHeightKey as String: 720
+  kCVPixelBufferWidthKey as String: outWidth,
+  kCVPixelBufferHeightKey as String: outHeight
 ]
 let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: attrs)
 
@@ -997,14 +1394,25 @@ writer.add(input)
 writer.startWriting()
 writer.startSession(atSourceTime: .zero)
 
-func pixelBuffer(from imagePath: String, pool: CVPixelBufferPool?) -> CVPixelBuffer? {
-  guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: imagePath) as CFURL, nil),
+func readExact(_ count: Int) -> Data? {
+  var buf = Data()
+  buf.reserveCapacity(count)
+  while buf.count < count {
+    let chunk = FileHandle.standardInput.readData(ofLength: count - buf.count)
+    if chunk.isEmpty { return nil }
+    buf.append(chunk)
+  }
+  return buf
+}
+
+func pixelBuffer(from jpegData: Data, pool: CVPixelBufferPool?) -> CVPixelBuffer? {
+  guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil),
         let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
   var buffer: CVPixelBuffer?
   if let pool = pool {
     CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
   } else {
-    CVPixelBufferCreate(nil, 1280, 720, kCVPixelFormatType_32ARGB, attrs as CFDictionary, &buffer)
+    CVPixelBufferCreate(nil, outWidth, outHeight, kCVPixelFormatType_32ARGB, attrs as CFDictionary, &buffer)
   }
   guard let pb = buffer else { return nil }
   CVPixelBufferLockBaseAddress(pb, [])
@@ -1012,25 +1420,32 @@ func pixelBuffer(from imagePath: String, pool: CVPixelBufferPool?) -> CVPixelBuf
   let colorSpace = CGColorSpaceCreateDeviceRGB()
   if let ctx = CGContext(
     data: data,
-    width: 1280,
-    height: 720,
+    width: outWidth,
+    height: outHeight,
     bitsPerComponent: 8,
     bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
     space: colorSpace,
     bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
   ) {
-    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1280, height: 720))
+    ctx.interpolationQuality = CGInterpolationQuality.high
+    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: outWidth, height: outHeight))
   }
   CVPixelBufferUnlockBaseAddress(pb, [])
   return pb
 }
 
 for i in 0..<frameCount {
+  guard let lenData = readExact(4), lenData.count == 4 else {
+    fatalError("Unexpected EOF reading frame length \\(i)")
+  }
+  let frameLen = lenData.withUnsafeBytes { Int($0.load(as: UInt32.self).bigEndian) }
+  guard let jpegData = readExact(frameLen) else {
+    fatalError("Unexpected EOF reading frame data \\(i)")
+  }
   while !input.isReadyForMoreMediaData {
     Thread.sleep(forTimeInterval: 0.005)
   }
-  let file = String(format: "%@/frame_%04d.jpg", framesDir, i)
-  guard let pb = pixelBuffer(from: file, pool: adaptor.pixelBufferPool) else {
+  guard let pb = pixelBuffer(from: jpegData, pool: adaptor.pixelBufferPool) else {
     fatalError("Failed to decode frame \\(i)")
   }
   let pts = CMTime(value: CMTimeValue(i), timescale: fps)
@@ -1047,16 +1462,24 @@ if writer.status != .completed {
 `;
   fs.writeFileSync(swiftScript, swiftSource);
 
+  const chunks = [];
+  for (const buf of frameBuffers) {
+    const hdr = Buffer.allocUnsafe(4);
+    hdr.writeUInt32BE(buf.length, 0);
+    chunks.push(hdr, buf);
+  }
+  const packedFrames = Buffer.concat(chunks);
+
   const tempOut = path.join(framesDir, "temp_out.mp4");
-  const bitrates = [420_000, 340_000, 500_000];
+  const bitrates = [340_000, 290_000, 250_000];
   for (const bps of bitrates) {
     const res = spawnSync(
       "/usr/bin/swift",
-      [swiftScript, framesDir, tempOut, String(TOTAL_FRAMES), String(FPS), String(bps)],
-      { encoding: "utf8" }
+      [swiftScript, tempOut, String(TOTAL_FRAMES), String(FPS), String(bps)],
+      { input: packedFrames, maxBuffer: 64 * 1024 * 1024 }
     );
     if (res.status !== 0) {
-      throw new Error(`Swift MP4 encoding failed: ${res.stderr}`);
+      throw new Error(`Swift MP4 encoding failed: ${res.stderr?.toString()}`);
     }
     const size = fs.statSync(tempOut).size;
     console.log(`MP4 bitrate=${bps} -> ${size} bytes`);
@@ -1067,7 +1490,7 @@ if writer.status != .completed {
   }
   const finalSize = fs.statSync(tempOut).size;
   if (finalSize > MAX_VIDEO_BYTES) {
-    throw new Error(`MP4 exceeded 1.2 MB (${finalSize} bytes)`);
+    throw new Error(`MP4 exceeded ${MAX_VIDEO_BYTES} bytes (${finalSize} bytes)`);
   }
   fs.copyFileSync(tempOut, outPath);
   return finalSize;
@@ -1086,35 +1509,44 @@ async function main() {
   const ffmpegBin = findFfmpeg();
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-tour-frames-"));
-  const framePaths = [];
 
   const browser = await chromium.launch({ headless: true });
   try {
+    const sceneHtml = buildSceneHtml(appCss);
     const context = await browser.newContext({
-      viewport: { width: WIDTH, height: HEIGHT },
-      deviceScaleFactor: 1
+      viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+      deviceScaleFactor: DEVICE_SCALE_FACTOR
     });
     const page = await context.newPage();
-    await page.setContent(buildSceneHtml(appCss), { waitUntil: "load" });
+    await page.setContent(sceneHtml, { waitUntil: "load" });
 
+    const frameBuffers = [];
     for (let i = 0; i < TOTAL_FRAMES; i++) {
       const t = i / FPS;
       await page.evaluate(time => window.__setDemoTime(time), t);
-      const framePath = path.join(tempDir, `frame_${String(i).padStart(4, "0")}.jpg`);
-      await page.screenshot({ path: framePath, type: "jpeg", quality: 92 });
-      framePaths.push(framePath);
+      frameBuffers.push(await page.screenshot({ type: "jpeg", quality: 84 }));
     }
 
-    // Export poster from the crisp autofill frame (t = 3.25s, frame 39)
+    // Export crisp 1280x720 poster from the autofilled Stripe modal frame (t = 3.55s)
     const posterPath = path.join(MEDIA_DIR, "demo-tour-poster.jpg");
-    await page.evaluate(() => window.__setDemoTime(3.25));
-    await page.screenshot({ path: posterPath, type: "jpeg", quality: 90 });
+    const posterContext = await browser.newContext({
+      viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+      deviceScaleFactor: 1
+    });
+    try {
+      const posterPage = await posterContext.newPage();
+      await posterPage.setContent(sceneHtml, { waitUntil: "load" });
+      await posterPage.evaluate(() => window.__setDemoTime(3.55));
+      await posterPage.screenshot({ path: posterPath, type: "jpeg", quality: 90 });
+    } finally {
+      await posterContext.close();
+    }
 
     const mp4Path = path.join(MEDIA_DIR, "demo-tour.mp4");
     const webmPath = path.join(MEDIA_DIR, "demo-tour.webm");
 
-    const webmBytes = encodeWebm(ffmpegBin, framePaths, tempDir, webmPath);
-    const mp4Bytes = encodeMp4WithSwift(tempDir, mp4Path);
+    const webmBytes = encodeWebm(ffmpegBin, frameBuffers, tempDir, webmPath);
+    const mp4Bytes = encodeMp4WithSwift(frameBuffers, tempDir, mp4Path);
     const posterBytes = fs.statSync(posterPath).size;
     const faststart = checkMp4Faststart(mp4Path);
 
@@ -1122,6 +1554,7 @@ async function main() {
       frames: TOTAL_FRAMES,
       fps: FPS,
       durationSec: DURATION_SEC,
+      resolution: `${OUT_WIDTH}x${OUT_HEIGHT}`,
       posterBytes,
       mp4Bytes,
       webmBytes,

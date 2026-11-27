@@ -4063,7 +4063,7 @@ function markHeroVideoFailed(video) {
 function initLandingPage() {
   if (!landingShell) return;
 
-  const HERO_CHAPTERS = [0, 4.5, 9, 13.5];
+  const HERO_CHAPTERS = [0, 5.2, 10.4, 15.6];
   const chapterPills = $$(".hero-workflow-pill", landingShell);
   let pendingChapterTime = null;
   // After a chapter click, the clicked chapter stays highlighted until the video has really
