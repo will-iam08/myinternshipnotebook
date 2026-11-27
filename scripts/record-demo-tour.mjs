@@ -22,6 +22,7 @@ const OUT_WIDTH = 1920;
 const OUT_HEIGHT = 1080;
 const FPS = 60;
 const DURATION_SEC = 30;
+const LOOP_REST_START = DURATION_SEC - 0.3;
 const TOTAL_FRAMES = FPS * DURATION_SEC;
 const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
 const MAX_POSTER_BYTES = 200 * 1024;
@@ -34,7 +35,7 @@ const ACTIONS = {
   markPracticed: 12.45,
   filterTerm: 16.3, saveOpening: 18.3,
   openExport: 21.7, downloadCalendar: 22.85,
-  dissolve: DURATION_SEC - 0.4
+  dissolve: LOOP_REST_START - 0.4
 };
 
 function findFfmpeg() {
@@ -161,6 +162,8 @@ html, body {
   margin-bottom: 14px;
 }
 
+.demo-app .cover kbd { opacity: 1; border-bottom-width: 1px; }
+
 .demo-app .page-wrap {
   position: relative;
   min-width: 0;
@@ -201,10 +204,19 @@ html, body {
   overflow: hidden;
 }
 
-.demo-app .board .column { min-width: 0; }
-.demo-board-view .app-card { min-width: 0; gap: 4px; padding: 8px 9px 8px 12px; }
+.demo-app .board .column { min-width: 0; padding: 8px 7px; }
+.demo-board-view .column-cards { gap: 6px; }
+.demo-board-view .app-card { min-width: 0; gap: 3px; padding: 7px 6px 7px 9px; }
+.demo-board-view .app-role { font-size: 0.93rem; }
+.demo-board-view .app-card .chips { gap: 3px; }
+.demo-board-view .app-card .chip { font-size: 0.62rem; padding: 2px 4px; }
+.demo-board-view .drag-origin { opacity: 0.5; }
 .demo-board-view .demo-history-stamp { font-size: 0.64rem; }
-.demo-board-view .view-head { max-width: 680px; }
+.demo-board-view :is(.view-head, .board) { max-width: 646px; }
+.demo-app .strip-top { max-width: 605px; }
+.demo-app .goal-card .card-title { width: max-content; }
+.demo-app .goal-card .card-note { max-width: 144px; }
+.demo-app .agenda-kind { width: 38px; white-space: nowrap; }
 
 .demo-window :is(.card, .app-card, .column, .sheet-page, .prep-group, .demo-mock-card,
   .demo-modal-card, .demo-field-box, .demo-quickfill-display, .button:not(.primary),
@@ -240,10 +252,14 @@ html, body {
 .demo-prep-page .prep-q { padding: 5px 0; }
 .demo-prep-page .prep-mark { min-height: 36px; }
 .demo-prep-page .entry-fields { margin-bottom: 12px; }
+.demo-prep-page :is(.entry-head, .stepper, .entry-fields, .prep-head, .prep-progress),
+.demo-prep-page.prep-detail .prep-q:not([data-focus]) {
+  opacity: var(--prep-context-opacity);
+  visibility: var(--prep-context-visibility);
+}
 .demo-window .ring { width: 96px; height: 96px; }
 .demo-app .demo-insights-view { max-width: 746px; margin-left: 0; }
 .demo-window :is(.funnel-row, .skill-bar) { min-height: 34px; }
-.demo-loop-frame { position: absolute; inset: 0; z-index: 100; pointer-events: none; }
 
 /* Hover and focus simulation classes */
 .is-hovered {
@@ -566,7 +582,7 @@ html, body {
   const QUICK_URL = "https://boards.greenhouse.io/stripe/jobs/98765";
   const CHAPTER = ${JSON.stringify(CHAPTERS)};
   const AT = ${JSON.stringify(ACTIONS)};
-  const LOOP_END = ${(TOTAL_FRAMES - 1) / FPS};
+  const LOOP_END = ${LOOP_REST_START};
   const VIEW_W = ${VIEWPORT_WIDTH}, VIEW_H = ${VIEWPORT_HEIGHT};
   const WIN_W = ${WINDOW_WIDTH}, WIN_H = ${WINDOW_HEIGHT}, MARGIN = ${FRAME_MARGIN};
   const STAGES = ["SAVED", "APPLIED", "INTERVIEW", "OFFER"];
@@ -636,7 +652,7 @@ html, body {
     const funnel = STAGES.map((_, i) => STAGES.slice(i).reduce(
       (total, stage, offset) => total + counts[i + offset] + DEMO.archived[stage], 0
     ));
-    return { active, counts, funnel };
+    return { active, counts, funnel, total: funnel[0] };
   }
 
   function renderTodayView(t, { calendar = false } = {}) {
@@ -646,7 +662,7 @@ html, body {
     const menuOpen = calendar && t >= AT.openExport && t < AT.downloadCalendar + 0.12;
 
     return \`
-      <section class="view \${calendar ? "demo-calendar-view" : ""}">
+      <section class="view \${calendar ? "demo-calendar-view" : "demo-today-view"}">
         <header class="view-head">
           <div>
             <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
@@ -738,8 +754,9 @@ html, body {
         ? t >= AT.grabStripe - 0.22
         : t >= CHAPTER.prep - 0.25);
       const anchor = stripe && !ghost ? \`data-anchor="card-stripe-\${dropped ? "interview" : "applied"}"\` : "";
+      const dragClass = ghost ? "demo-drag-card" : stripe && isDragging ? "drag-origin" : "";
       return \`
-        <article class="app-card st-\${app.stage} \${ghost ? "demo-drag-card" : ""} \${hover ? "is-hovered" : ""}" \${anchor} style="\${style}">
+        <article class="app-card st-\${app.stage} \${dragClass} \${hover ? "is-hovered" : ""}" \${anchor} \${ghost ? 'aria-hidden="true"' : ""} style="\${style}">
           <div class="app-card-top"><span class="app-company">\${app.company}</span></div>
           <h3 class="app-role">\${app.role}</h3>
           \${app.location ? \`<div class="app-meta"><span>\${app.location}</span></div>\` : ""}
@@ -762,14 +779,14 @@ html, body {
             <h1 class="view-title">Pipeline Board<span class="dot">.</span></h1>
           </div>
           <div class="filters" style="margin:0">
-            <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (\${active.length})</button>
+            <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (\${cards.length})</button>
             <button type="button" class="filter-chip \${t >= AT.filterPython - 0.25 && !filterPython ? "is-hovered" : ""}" data-anchor="chip-python" aria-pressed="\${filterPython}">Python (\${matches("Python")})</button>
             <button type="button" class="filter-chip" aria-pressed="false">TypeScript (\${matches("TypeScript")})</button>
           </div>
         </header>
         <div class="board">
           \${STAGES.map(stage => {
-            const column = cards.filter(app => app.stage === stage && (!isDragging || app.company !== DEMO.stripe.company));
+            const column = cards.filter(app => app.stage === stage);
             column.sort((a, b) => Number(b.company === DEMO.stripe.company) - Number(a.company === DEMO.stripe.company));
             return \`<section class="column st-\${stage} \${isDragging && stage === "INTERVIEW" ? "drop" : ""}">
               <div class="column-head"><span class="dot"></span><h2>\${stage}</h2><span class="count">\${column.length}</span></div>
@@ -837,6 +854,8 @@ html, body {
     const mockSpring = clamp(springOut(t - mockStart, 260, 21), 0, 1.06);
     const mockProgress = seg(t, mockStart, mockStart + 1.05, smoothstep);
     const mockScore = Math.round(lerp(62, score, mockProgress));
+    const contextOpacity = 1 - seg(t, CHAPTER.prep + 0.4, PREP_SCROLL_START, smoothstep);
+    const detailClass = FOCUS_SELECTORS.prep === PREP_DETAIL ? " prep-detail" : "";
     const questions = [
       { text: "Design an idempotent webhook delivery queue with retries in Go.", done: true },
       { text: "How would you trace a slow SQL query under production load?", done: false },
@@ -844,7 +863,7 @@ html, body {
     ];
 
     return \`
-      <article class="sheet-page demo-prep-page" style="padding: 18px 28px 22px 76px; transform: translateY(\${-prepScrollOffset(scrollTime)}px)">
+      <article class="sheet-page demo-prep-page\${detailClass}" style="padding: 18px 28px 22px 76px; transform: translateY(\${-prepScrollOffset(scrollTime)}px); --prep-context-opacity: \${contextOpacity}; --prep-context-visibility: \${contextOpacity ? "visible" : "hidden"}">
         <div class="entry-head">
           <span class="entry-company">\${company}</span>
           <h1 class="entry-role" style="font-size: 1.78rem">\${role}</h1>
@@ -904,9 +923,8 @@ html, body {
     \`;
   }
 
-  function renderInsightsView(t) {
-    const { active, funnel } = notebookAt(t);
-    const [total, sent, interview, offers] = funnel;
+  function renderInsightsView(t, { active, funnel, total } = notebookAt(t)) {
+    const [, sent, interview, offers] = funnel;
     const responseRate = percent(interview, sent);
     const progress = i => seg(t, CHAPTER.insights + 0.28 + i * 0.11, CHAPTER.insights + 1.42 + i * 0.11, quintOut);
     const skillCounts = new Map();
@@ -1056,27 +1074,29 @@ html, body {
   const VIEW_TRANSITION_SEC = 0.32;
   const BOARD_APPROACH = CHAPTER.board + VIEW_TRANSITION_SEC + 0.05;
   const PYTHON_APPROACH = 7.68;
-  const BOARD_TOP = ".board :is(.column.st-APPLIED, .column.st-INTERVIEW) :is(.column-head, .column-cards > :first-child)";
-  const PYTHON_CHIP = '[data-anchor="chip-python"]';
-  const RADAR = '[data-anchor="radar-card"]';
+  const BRAND_TEXT = ".cover-title, .cover-sub";
+  const CALENDAR_HEADER = BRAND_TEXT + ", .demo-calendar-view .view-head";
+  const RADAR = CALENDAR_HEADER + ', [data-anchor="radar-card"]';
   const PREP_FULL = ".demo-prep-page :is(.prep-group, .demo-mock-card)";
   const PREP_DETAIL = '.demo-prep-page :is([data-focus="prep-question"], .demo-mock-card)';
-  const PREP_SCROLL_START = CHAPTER.prep + 0.4;
+  const PREP_SCROLL_START = CHAPTER.prep + 0.7;
   const PREP_SCROLL_END = CHAPTER.prep + 1.55;
   const PREP_HOLD_END = 13.97;
   const FOCUS_SELECTORS = {
     overview: "#demo-window",
-    "quick-fill": "#demo-modal .demo-modal-card",
-    "board-top": BOARD_TOP,
-    "board-python": BOARD_TOP + ", " + PYTHON_CHIP,
-    "stripe-interview": '[data-anchor="card-stripe-interview"]',
+    brand: BRAND_TEXT,
+    "quick-fill": "#demo-modal .demo-modal-card, .demo-today-view .view-head > div",
+    board: ".demo-board-view .view-head, .board :is(.column-head, .app-card)",
     prep: PREP_FULL,
-    openings: ".demo-openings-feed",
+    openings: ".demo-openings-view .view-head, .demo-openings-feed",
     radar: RADAR,
     "radar-export": RADAR + ', [data-anchor="open-export"]',
-    export: ".demo-export, .demo-export-menu",
-    funnel: '[data-anchor="funnel-card"]'
+    export: CALENDAR_HEADER + ", .demo-export, .demo-export-menu",
+    funnel: BRAND_TEXT + ", .demo-insights-view :is(.view-head, .kpis, .insight-grid)"
   };
+  const TOP_FRAMED_FOCUSES = new Set([
+    "quick-fill", "board", "openings", "radar", "radar-export", "export", "funnel"
+  ]);
 
   // [Time, target scale, focus, vertical aim offset, horizontal pan fraction].
   const CAMERA_KEYS = [
@@ -1086,13 +1106,12 @@ html, body {
     [3.66, 1.35, "quick-fill"],
     [4.36, 1, "overview"],
     [BOARD_APPROACH, 1, "overview"],
-    [5.85, 1.35, "board-top", 100],
-    [AT.dropStripe, 1.35, "board-top", 100],
-    [7.43, 1.35, "board-top"],
-    [PYTHON_APPROACH, 1.30, "board-python", 0, 0.045],
-    [8.66, 1.30, "board-python", 0, 0.045],
-    [8.76, 1.30, "stripe-interview"],
-    [9.42, 1.30, "stripe-interview", 105],
+    [5.85, 1.35, "board"],
+    [AT.dropStripe, 1.35, "board"],
+    [PYTHON_APPROACH, 1.30, "board", 0, 0.045],
+    [8.66, 1.30, "board", 0, 0.045],
+    [8.76, 1.30, "board"],
+    [9.42, 1.30, "board"],
     [10.05, 1, "overview"],
     [11.10, 1, "overview"],
     [11.9, 1.40, "prep"],
@@ -1105,14 +1124,14 @@ html, body {
     [20.35, 1, "overview"],
     [20.98, 1.26, "radar-export"],
     [21.32, 1.26, "radar-export"],
-    [21.98, 1.30, "export", 0, 0.035],
-    [22.90, 1.30, "export", 0, 0.035],
-    [23.52, 1.26, "radar"],
-    [24.18, 1.26, "radar"],
+    [21.98, 1.30, "export", 0, 0.015],
+    [22.90, 1.30, "export", 0, 0.015],
+    [23.52, 1.24, "radar"],
+    [24.18, 1.24, "radar"],
     [24.95, 1, "overview"],
     [25.34, 1, "overview"],
-    [26.08, 1.30, "funnel"],
-    [28.25, 1.30, "funnel"],
+    [26.08, 1.26, "funnel"],
+    [28.25, 1.26, "funnel"],
     [AT.dissolve, 1, "overview"],
     [LOOP_END, 1, "overview"]
   ];
@@ -1179,6 +1198,10 @@ html, body {
     const b = cameraPoses[i + 1] ?? a;
     const p = a === b ? 0 : seg(t, a.time, b.time, quintInOut);
     const scale = lerp(a.scale, b.scale, p);
+    let focus = p < 0.5 ? a.focus : b.focus;
+    if (a.focus === "overview" || b.focus === "overview") {
+      focus = scale <= 1.02 ? "overview" : a.focus === "overview" ? b.focus : a.focus;
+    }
     const horizontal = lerp(a.pan, b.pan, p) + lerp(0.5, 0.02, seg(scale, 1, 1.1, smoothstep));
     // Interpolate within the window's overscan so a push-in cannot expose backdrop.
     const tx = (VIEW_W - WIN_W * scale) * horizontal - WIN_LEFT * scale;
@@ -1186,11 +1209,12 @@ html, body {
     if (prepRect && (a.focus === "prep" || b.focus === "prep")) {
       aim = lerp(aim, verticalAim(prepRect, scale), seg(scale, 1.02, 1.04, smoothstep));
     }
-    const ty = aim - WIN_TOP * scale;
-    let focus = p < 0.5 ? a.focus : b.focus;
-    if (a.focus === "overview" || b.focus === "overview") {
-      focus = scale <= 1.02 ? "overview" : a.focus === "overview" ? b.focus : a.focus;
+    if (TOP_FRAMED_FOCUSES.has(focus)) {
+      // Bring the heading into the zoom before the window starts filling the stage.
+      const topAim = verticalAim(FOCUS_RECTS[focus], scale, -VIEW_H);
+      aim = lerp(aim, topAim, seg(scale, 1.02, 1.1, smoothstep));
     }
+    const ty = Math.max(aim - WIN_TOP * scale, 1 - FOCUS_RECTS.brand.top * scale);
     return { scale, tx, ty, focus };
   }
 
@@ -1221,8 +1245,9 @@ html, body {
         FOCUS_RECTS[name] = previous ? enclosingRect([previous, current]) : current;
       }
     };
-    captureFocus("overview");
+    captureFocus("overview", "brand");
     capture(document, "nav-new", "nav-board", "nav-today", "nav-insights");
+    view.innerHTML = renderTodayView(0);
     renderModal(0, { forceOpen: true });
     capture(document, "quickfill-input", "quickfill-fill", "modal-save");
     captureFocus("quick-fill");
@@ -1230,12 +1255,12 @@ html, body {
 
     view.innerHTML = renderBoardView(CHAPTER.board, { measureDropSlot: true });
     capture(view, "card-stripe-applied", "slot-interview", "chip-python");
-    captureFocus("board-top");
+    captureFocus("board");
     view.innerHTML = renderBoardView(AT.dropStripe + 0.2);
-    captureFocus("board-top", "board-python");
+    captureFocus("board");
     view.innerHTML = renderBoardView(AT.filterPython);
     capture(view, "card-stripe-interview");
-    captureFocus("board-python", "stripe-interview");
+    captureFocus("board");
     view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
     prepMockHeight = view.querySelector(".demo-mock-card").getBoundingClientRect().height;
     const fullPrep = focusRect("prep", view);
@@ -1377,19 +1402,19 @@ html, body {
   ];
 
   let lastCursorKind = "";
-  let openingFrame;
+  const sceneTime = t => t >= LOOP_END ? 0 : t;
   window.__setDemoTime = function (t) {
-    if (t >= LOOP_END) t = 0;
+    t = sceneTime(t);
     const viewOut = document.getElementById("demo-view-out");
     const viewIn = document.getElementById("demo-view-in");
     const navNew = document.getElementById("nav-new-btn");
     const toast = document.getElementById("demo-toast");
     const sceneIndex = SCENES.findLastIndex(([start]) => t >= start);
     const [start, section, render] = SCENES[sceneIndex];
-    const { active, funnel } = notebookAt(t);
+    const notebook = notebookAt(t);
 
-    document.getElementById("nav-board-count").textContent = active.length;
-    document.getElementById("nav-page-count").textContent = funnel[0];
+    document.getElementById("nav-board-count").textContent = notebook.active.length;
+    document.getElementById("nav-page-count").textContent = notebook.total;
     const nextSection = SCENES[sceneIndex + 1];
     for (const name of ["today", "board", "insights"]) {
       const tab = document.getElementById("nav-" + name);
@@ -1401,13 +1426,18 @@ html, body {
 
     const transitionEnd = start + VIEW_TRANSITION_SEC;
     const isTransitioning = sceneIndex > 0 && t < transitionEnd;
-    const progress = isTransitioning ? seg(t, start, transitionEnd, quintOut) : 1;
-    viewOut.style.display = isTransitioning ? "block" : "none";
-    viewOut.innerHTML = isTransitioning ? SCENES[sceneIndex - 1][2](start - 1 / ${FPS}) : "";
-    viewOut.style.opacity = 1 - progress;
-    viewOut.style.transform = \`translateY(\${-8 * progress}px)\`;
-    viewIn.innerHTML = render(t);
+    const dissolving = t >= AT.dissolve;
+    const progress = dissolving ? seg(t, AT.dissolve, LOOP_END, smoothstep)
+      : isTransitioning ? seg(t, start, transitionEnd, quintOut) : 1;
+    const content = render === renderInsightsView ? render(t, notebook) : render(t);
+    viewOut.style.display = isTransitioning || dissolving ? "block" : "none";
+    viewOut.innerHTML = dissolving ? content
+      : isTransitioning ? SCENES[sceneIndex - 1][2](start - 1 / ${FPS}) : "";
+    viewOut.style.opacity = dissolving ? 1 : 1 - progress;
+    viewOut.style.transform = isTransitioning ? \`translateY(\${-8 * progress}px)\` : "none";
+    viewIn.innerHTML = dissolving ? renderTodayView(0) : content;
     viewIn.style.opacity = progress;
+    viewIn.style.background = dissolving ? "inherit" : "";
     viewIn.style.transform = isTransitioning ? \`translateY(\${10 * (1 - progress)}px)\` : "none";
 
     const camera = document.getElementById("demo-camera");
@@ -1460,10 +1490,6 @@ html, body {
       ripple.style.opacity = rip.opacity;
     }
 
-    if (openingFrame) {
-      openingFrame.hidden = t < AT.dissolve;
-      openingFrame.style.opacity = seg(t, AT.dissolve, LOOP_END, smoothstep);
-    }
     return cam;
   };
 
@@ -1472,6 +1498,12 @@ html, body {
   const edgeMargin = (outer, inner) => Math.min(
     inner.left - outer.left, inner.top - outer.top, outer.right - inner.right, outer.bottom - inner.bottom
   );
+
+  function partiallyClipped(rect) {
+    return Math.min(rect.right, VIEW_W) > Math.max(rect.left, 0) &&
+      Math.min(rect.bottom, VIEW_H) > Math.max(rect.top, 0) &&
+      edgeMargin(stageBounds, rect) < -0.01;
+  }
 
   function anchorMargin(name, cam, win) {
     const matches = [...win.querySelectorAll('[data-anchor="' + name + '"]')].filter(visible);
@@ -1497,7 +1529,7 @@ html, body {
 
   window.__auditFrame = function (t) {
     const cam = window.__setDemoTime(t);
-    const time = t >= LOOP_END ? 0 : t;
+    const time = sceneTime(t);
     const windowEl = document.getElementById("demo-window");
     const win = windowEl.getBoundingClientRect();
     const focus = cam.focus === "overview" ? win : focusRect(cam.focus, windowEl);
@@ -1505,6 +1537,14 @@ html, body {
     const sidebar = windowEl.querySelector(".cover").getBoundingClientRect();
     const sidebarMargin = Math.max(sidebar.left + 12 * cam.scale, cam.scale - sidebar.right);
     const toastMargin = visible(toast) ? edgeMargin(stageBounds, toast.getBoundingClientRect()) : null;
+    const textElements = windowEl.querySelectorAll(
+      "h1, h2, .view-title, .card-title, .view-sub, .card-note, .prep-sub, .eyebrow, " + BRAND_TEXT +
+      ", .filter-chip, button, kbd, .kpi :is(p, strong, span), .strip-figure, .strip-rate, .ring-label > *, .demo-toast, " +
+      ".demo-board-view .app-card :is(.app-company, .app-role, .app-meta span, .chip, .demo-history-stamp)"
+    );
+    const slicedText = [...textElements]
+      .filter(el => visible(el) && partiallyClipped(el.getBoundingClientRect()))
+      .map(el => el.textContent.trim().replace(/\s+/g, " "));
 
     const upcoming = new Set(cursorStops
       .filter(([arrival, departure, pos]) => pos.anchor && departure >= time && arrival <= time + 0.5)
@@ -1539,6 +1579,7 @@ html, body {
       toastMargin,
       cursorMargin,
       boardMargin,
+      slicedText,
       clippedAnchors
     };
   };
@@ -1548,14 +1589,6 @@ html, body {
   window.__cameraKeys = cameraPoses.map(({ time, scale, focus, fit }) => ({ time, scale, focus, fit }));
   cursorStops = buildCursorTimeline();
   window.__setDemoTime(0);
-  const stage = document.getElementById("demo-stage");
-  openingFrame = stage.cloneNode(true);
-  openingFrame.removeAttribute("id");
-  for (const el of openingFrame.querySelectorAll("[id]")) el.removeAttribute("id");
-  openingFrame.hidden = true;
-  openingFrame.classList.add("demo-loop-frame");
-  openingFrame.setAttribute("aria-hidden", "true");
-  stage.append(openingFrame);
 })();
 </script>
 </body>
@@ -1751,6 +1784,7 @@ const FRAMING_RULES = {
   overviewWindow: frame => frame.scale <= 1.11 ? frame.windowVisibleRatio - 1 + 1e-9 : null,
   sidebar: frame => frame.sidebarMargin,
   toast: frame => frame.toastMargin === null ? null : frame.toastMargin - FRAME_MARGIN,
+  slicedText: frame => -frame.slicedText.length,
   cursor: frame => frame.clippedAnchors.length ? Math.min(frame.cursorMargin ?? 0, -0.01) : frame.cursorMargin,
   boardViewport: frame => frame.boardMargin === null ? null : frame.boardMargin + 0.01
 };
