@@ -1093,11 +1093,10 @@ html, body {
   const WIN_LEFT = (VIEW_W - WIN_W) / 2;
   const WIN_TOP = (VIEW_H - WIN_H) / 2;
   const VIEW_TRANSITION_SEC = 0.32;
+  const SWITCH_LEAD_SEC = 0.3;
   const BOARD_APPROACH = CHAPTER.board + VIEW_TRANSITION_SEC + 0.05;
   const PYTHON_APPROACH = 7.68;
   const BRAND_TEXT = ".cover-title, .cover-sub";
-  const CALENDAR_HEADER = BRAND_TEXT + ", .demo-calendar-view .view-head";
-  const RADAR = CALENDAR_HEADER + ', [data-anchor="radar-card"]';
   const PREP_FULL = ".demo-prep-page :is(.prep-group, .demo-mock-card)";
   const PREP_DETAIL = '.demo-prep-page :is([data-focus="prep-question"], .demo-mock-card)';
   const PREP_SCROLL_START = CHAPTER.prep + 0.7;
@@ -1107,33 +1106,25 @@ html, body {
     overview: "#demo-window",
     brand: BRAND_TEXT,
     "quick-fill": "#demo-modal .demo-modal-card, .demo-today-view .view-head > div",
-    board: ".demo-board-view .view-head, .board :is(.column-head, .app-card)",
     prep: PREP_FULL,
-    openings: ".demo-openings-view .view-head, .demo-openings-feed",
-    radar: RADAR,
-    "radar-export": RADAR + ', [data-anchor="open-export"]',
-    export: CALENDAR_HEADER + ", .demo-export, .demo-export-menu",
-    funnel: BRAND_TEXT + ", .demo-insights-view :is(.view-head, .kpis, .insight-grid)"
+    export: BRAND_TEXT + ', .demo-calendar-view .view-head, [data-anchor="radar-card"], .demo-export-menu'
   };
-  // [Time, target scale, focus, horizontal pan fraction].
+
+  // [Time, target scale, focus].
   const CAMERA_KEYS = [
     [0, 1, "overview"],
-    [0.62, 1, "overview"],
-    [2.02, 1.23, "quick-fill"],
-    [6.22, 1.23, "board"],
-    [7.67, 1.23, "board", 0.045],
-    [8.55, 1.23, "board", 0.045],
-    [9.98, 1, "overview"],
+    [AT.newPage, 1, "overview"],
+    [1.92, 1.25, "quick-fill"],
+    [3.20, 1.25, "quick-fill"],
+    [4.60, 1, "overview"],
     [PREP_SCROLL_END, 1, "overview"],
-    [12.63, 1.33, "prep"],
-    [13.68, 1.33, "prep"],
-    [14.97, 1.23, "openings"],
-    [20.25, 1.23, "radar-export"],
-    [21.65, 1.23, "export", 0.015],
-    [22.95, 1.23, "export", 0.015],
-    [24.35, 1.23, "radar"],
-    [27.14, 1.23, "funnel"],
-    [AT.dissolve, 1, "overview"],
+    [12.75, 1.30, "prep"],
+    [13.36, 1.30, "prep"],
+    [14.66, 1, "overview"],
+    [21.10, 1, "overview"],
+    [22.36, 1.25, "export"],
+    [22.95, 1.25, "export"],
+    [24.30, 1, "overview"],
     [LOOP_END, 1, "overview"]
   ];
   const FOCUS_RECTS = {};
@@ -1180,31 +1171,16 @@ html, body {
   }
 
   function cameraKeyPoses() {
-    const sharedTop = enclosingRect(["quick-fill", "board", "prep", "openings", "radar-export", "export", "funnel"]
-      .map(name => FOCUS_RECTS[name]));
-    return CAMERA_KEYS.map(([time, targetScale, focus, pan = 0]) => {
-      const rect = focus === "overview" || focus === "prep" ? FOCUS_RECTS[focus] : sharedTop;
+    return CAMERA_KEYS.map(([time, targetScale, focus]) => {
+      const rect = FOCUS_RECTS[focus];
       const fit = focusFit(rect);
       const scale = Math.min(targetScale, fit - 0.0001);
       const room = VIEW_H - WIN_H * scale;
       const brandAim = 1 - (FOCUS_RECTS.brand.top - WIN_TOP) * scale;
       const aim = Math.max(verticalAim(rect, scale, focus === "prep" ? 0 : -VIEW_H), brandAim);
       const vertical = focus === "overview" || room === 0 ? 0.5 : aim / room;
-      return { time, scale, fit, focus, pan, vertical };
+      return { time, scale, fit, focus, vertical };
     });
-  }
-
-  function cameraFocus(t, scale) {
-    if (scale <= 1.02) return "overview";
-    // At the chapter boundary the outgoing page is still the only visible layer.
-    if (t <= CHAPTER.board) return "quick-fill";
-    if (t <= CHAPTER.prep) return "board";
-    if (t <= CHAPTER.openings) return "prep";
-    if (t <= CHAPTER.calendar) return "openings";
-    if (t <= CHAPTER.insights) {
-      return t >= AT.openExport && t < AT.downloadCalendar + 0.12 ? "export" : "radar-export";
-    }
-    return "funnel";
   }
 
   let cameraPoses;
@@ -1215,21 +1191,14 @@ html, body {
     // A monotone cubic with zero tangents joins each move to its neighboring holds.
     const p = a === b ? 0 : seg(t, a.time, b.time, smoothstep);
     const scale = Math.exp(lerp(Math.log(a.scale), Math.log(b.scale), p));
-    const zoom = seg(scale, 1, 1.1, smoothstep);
-    const horizontal = lerp(0.5, 0.02 + lerp(a.pan, b.pan, p), zoom);
+    const close = a.focus === "overview" ? b : a;
+    const blend = close.scale > 1 ? seg(scale, 1, Math.min(1.1, close.scale), smoothstep) : 0;
+    const horizontal = lerp(0.5, 0.02, blend);
+    const vertical = lerp(0.5, close.vertical, blend);
     // Align matching window and stage anchors so the zoom moves around its focal point.
     const tx = VIEW_W * horizontal - (WIN_LEFT + WIN_W * horizontal) * scale;
-    let aim;
-    if (a.focus !== "overview" && b.focus !== "overview") {
-      const traveled = a.scale === b.scale ? p : (scale - a.scale) / (b.scale - a.scale);
-      aim = lerp((VIEW_H - WIN_H * a.scale) * a.vertical, (VIEW_H - WIN_H * b.scale) * b.vertical, traveled);
-    } else {
-      const close = a.focus === "overview" ? b : a;
-      const blend = close.scale > 1 ? seg(scale, 1, Math.min(1.1, close.scale), smoothstep) : 0;
-      aim = (VIEW_H - WIN_H * scale) * lerp(0.5, close.vertical, blend);
-    }
-    const ty = aim - WIN_TOP * scale;
-    return { scale, tx, ty, focus: cameraFocus(t, scale) };
+    const ty = VIEW_H * vertical - (WIN_TOP + WIN_H * vertical) * scale;
+    return { scale, tx, ty, focus: scale <= 1.02 ? "overview" : close.focus };
   }
 
   const ANCHORS = {};
@@ -1271,12 +1240,8 @@ html, body {
     capture(view, "card-stripe-applied", "chip-python");
     view.innerHTML = renderBoardView(CHAPTER.board, { measureDropSlot: true });
     capture(view, "slot-interview");
-    captureFocus("board");
-    view.innerHTML = renderBoardView(AT.dropStripe + 0.2);
-    captureFocus("board");
     view.innerHTML = renderBoardView(AT.filterPython);
     capture(view, "card-stripe-interview");
-    captureFocus("board");
     view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
     prepMockHeight = view.querySelector(".demo-mock-card").getBoundingClientRect().height;
     const fullPrep = focusRect("prep", view);
@@ -1292,16 +1257,13 @@ html, body {
     captureFocus("prep");
     view.innerHTML = renderEntryPrepView(AT.markPracticed + 0.18, PREP_HOLD_END);
     captureFocus("prep");
-    view.innerHTML = renderOpeningsView(CHAPTER.openings);
-    captureFocus("openings");
     view.innerHTML = renderOpeningsView(AT.filterTerm);
     capture(view, "filter-term", "save-opening", "nav-calendar");
     view.innerHTML = renderTodayView(AT.openExport, { calendar: true });
     capture(view, "open-export", "download-calendar", "radar-card");
-    captureFocus("radar", "radar-export", "export");
+    captureFocus("export");
     view.innerHTML = renderInsightsView(CHAPTER.insights);
     capture(view, "funnel-card");
-    captureFocus("funnel");
   }
 
   function pt(name, dx = 0, dy = 0) {
@@ -1541,6 +1503,11 @@ html, body {
     }));
   }
 
+  function inTransitionWindow(t) {
+    return t >= AT.dissolve - SWITCH_LEAD_SEC ||
+      SCENES.some(([start], i) => i > 0 && t >= start - SWITCH_LEAD_SEC && t < start + VIEW_TRANSITION_SEC);
+  }
+
   window.__auditFrame = function (t) {
     const cam = window.__setDemoTime(t);
     const time = sceneTime(t);
@@ -1588,6 +1555,7 @@ html, body {
       tx: cam.tx,
       ty: cam.ty,
       focus: cam.focus,
+      viewTransition: inTransitionWindow(t),
       focusMargin: focus ? edgeMargin(stageBounds, focus) : null,
       windowVisibleRatio: visibleArea / (win.width * win.height),
       emptyRatio: 1 - visibleArea / (VIEW_W * VIEW_H),
@@ -1819,6 +1787,9 @@ const FRAMING_RULES = {
   slicedText: frame => -frame.slicedText.length,
   cursor: frame => frame.clippedAnchors.length ? Math.min(frame.cursorMargin ?? 0, -0.01) : frame.cursorMargin,
   boardViewport: frame => frame.boardMargin === null ? null : frame.boardMargin + 0.01,
+  viewTransition: frame => frame.viewTransition
+    ? Math.min(0.001 - Math.abs(frame.scale - 1), -(frame.motion?.zoomSpeed ?? 0), -(frame.motion?.panSpeed ?? 0))
+    : null,
   motion: frame => frame.motion
     ? Math.min(...Object.entries(MOTION_LIMITS).map(([name, limit]) => 1 - frame.motion[name] / limit))
     : null
