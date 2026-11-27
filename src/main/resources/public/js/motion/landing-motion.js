@@ -77,7 +77,8 @@ export function initLandingMotion({ shell, win = window }) {
   function paint(scrollY) {
     header?.classList.toggle("landing-header-scrolled", scrollY > HEADER_SCROLLED_AT);
     // The header goes dark over dark canvases so it never sits as a bright bar above a dark scene.
-    const probe = scrollY + headerBottom;
+    // +1 so a scene that starts exactly under the header (fractional page offsets) counts as under it.
+    const probe = scrollY + headerBottom + 1;
     header?.classList.toggle("landing-header-on-dark", darkRanges.some(range => probe >= range.top && probe < range.bottom));
     if (reduced()) return;
     shell.style.setProperty("--hero-p", clamp(scrollY / heroHeight, 0, 1).toFixed(4));

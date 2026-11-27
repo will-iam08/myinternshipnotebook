@@ -22,9 +22,9 @@ const clock = seconds => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:$
 
 export const SCENE_UPDATES = Object.freeze({
   clipper(p, stage) {
-    const filled = Math.min(5, Math.floor((p - 0.5) / 0.056) + 1);
-    const count = p >= 0.78 ? 5 : filled;
-    setCounter(stage, "clip", p < 0.5 ? "Clip" : `Filled ${count} ${count === 1 ? "field" : "fields"}`);
+    // A chip's value shows once its CSS fill passes half way: at p = 0.43, 0.455, 0.48 and 0.505.
+    const count = Math.max(0, Math.min(4, Math.floor((p - 0.43) / 0.025) + 1));
+    setCounter(stage, "clip", count === 0 ? "Clip" : `Filled ${count} ${count === 1 ? "field" : "fields"}`);
   },
   pipeline(p, stage) {
     const moved = p >= 0.72;
@@ -44,11 +44,13 @@ export const SCENE_UPDATES = Object.freeze({
   reminders(p, stage) {
     const alerts = [0.29, 0.32, 0.35, 0.38].filter(at => p >= at).length;
     setCounter(stage, "alerts", `${alerts} ${alerts === 1 ? "alert" : "alerts"}`);
-    setCounter(stage, "day", p < 0.46 ? "" : DAYS[Math.min(6, Math.floor(span(p, 0.46, 0.3) * 7))]);
+    // Same clock as the CSS playhead (p 0.26 to 0.76 sweeps Mon to Sun).
+    setCounter(stage, "day", p < 0.24 ? "" : DAYS[Math.min(6, Math.round(span(p, 0.26, 0.5) * 6))]);
   },
   insights(p, stage) {
-    const rings = span(p, 0.22, 0.6);
-    const bars = span(p, 0.06, 0.5);
+    // Bars, counts and rings share one clock so a mid-scroll frame never contradicts itself.
+    const rings = span(p, 0.12, 0.6);
+    const bars = rings;
     setCounter(stage, "r1", `${Math.round(rings * 75)}%`);
     setCounter(stage, "r2", `${Math.round(rings * 33)}%`);
     setCounter(stage, "r3", `${Math.round(rings * 11)}%`);
