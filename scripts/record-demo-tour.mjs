@@ -829,6 +829,7 @@ import VideoToolbox
 
 let fps: Int32 = ${FPS}
 let frameDuration = CMTime(value: 1, timescale: fps)
+let holdStart: Int64 = ${LOOP_REST_START * FPS}
 let keyframes: Set<Int64> = ${JSON.stringify([...Object.values(CHAPTERS), LOOP_REST_START].map(t => t * FPS))}
 let outWidth = ${OUT_WIDTH}
 let outHeight = ${OUT_HEIGHT}
@@ -846,6 +847,7 @@ final class MP4Output: @unchecked Sendable {
   private let lock = NSLock()
   private let writer: AVAssetWriter
   private var input: AVAssetWriterInput?
+  private var prerollFrames = 0
   private var writtenFrames: Int64 = 0
   private var failure: Error?
 
@@ -868,15 +870,23 @@ final class MP4Output: @unchecked Sendable {
     return input
   }
 
-  func receive(_ status: OSStatus, _ flags: VTEncodeInfoFlags, _ sample: CMSampleBuffer?) {
+  func receive(_ status: OSStatus, _ flags: VTEncodeInfoFlags, _ sample: CMSampleBuffer?, at index: Int64) {
     lock.withLock {
       guard failure == nil else { return }
       do {
-        try checkVT(status, "Encoding frame \\(writtenFrames)")
-        let expectedPTS = CMTime(value: writtenFrames, timescale: fps)
-        guard !flags.contains(.frameDropped), let sample, CMSampleBufferDataIsReady(sample),
-              CMSampleBufferGetPresentationTimeStamp(sample) == expectedPTS else {
-          throw EncodingError("Missing or out-of-order encoded frame \\(writtenFrames)")
+        try checkVT(status, "Encoding frame \\(index)")
+        guard !flags.contains(.frameDropped), let sample, CMSampleBufferDataIsReady(sample) else {
+          throw EncodingError("Missing encoded frame \\(index)")
+        }
+        if index < 0 {
+          prerollFrames += 1
+          return
+        }
+        if index == 0 && prerollFrames != Int(fps) {
+          throw EncodingError("H.264 completed \\(prerollFrames) of \\(fps) pre-roll frames")
+        }
+        guard index == writtenFrames, CMSampleBufferGetPresentationTimeStamp(sample) == CMTime(value: index, timescale: fps) else {
+          throw EncodingError("Out-of-order encoded frame \\(index), expected \\(writtenFrames)")
         }
         let input = try self.input ?? start(with: sample)
         while !input.isReadyForMoreMediaData {
@@ -938,7 +948,70 @@ func pixelBuffer(from jpegData: Data, pool: CVPixelBufferPool) -> CVPixelBuffer?
   return pb
 }
 
-func verifyKeyframes(in url: URL) async throws {
+func readDecodedFrames(
+  in asset: AVAsset, track: AVAssetTrack, decodingFrom start: Int64, at indices: [Int64]
+) throws -> [CVPixelBuffer] {
+  guard let last = indices.last else { return [] }
+  let reader = try AVAssetReader(asset: asset)
+  let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+  ])
+  output.alwaysCopiesSampleData = false
+  reader.add(output)
+  let timestamp = { CMTime(value: $0, timescale: fps) }
+  reader.timeRange = CMTimeRange(start: timestamp(start), end: timestamp(last + 1))
+  guard reader.startReading() else {
+    throw EncodingError("Cannot decode MP4 seam: \\(String(describing: reader.error))")
+  }
+  defer { reader.cancelReading() }
+
+  var frames: [CVPixelBuffer] = []
+  while let sample = output.copyNextSampleBuffer() {
+    guard CMSampleBufferGetPresentationTimeStamp(sample) == timestamp(indices[frames.count]) else { continue }
+    guard let image = CMSampleBufferGetImageBuffer(sample) else { throw EncodingError("Missing decoded MP4 image") }
+    frames.append(image)
+    if frames.count == indices.count { return frames }
+  }
+  throw EncodingError("Cannot decode MP4 frame \\(indices[frames.count]): \\(String(describing: reader.error))")
+}
+
+func meanRGBDifference(_ a: CVPixelBuffer, _ b: CVPixelBuffer) throws -> Double {
+  let width = CVPixelBufferGetWidth(a)
+  let height = CVPixelBufferGetHeight(a)
+  guard width == outWidth, height == outHeight,
+        CVPixelBufferGetWidth(b) == width, CVPixelBufferGetHeight(b) == height,
+        CVPixelBufferGetPixelFormatType(a) == kCVPixelFormatType_32BGRA,
+        CVPixelBufferGetPixelFormatType(b) == kCVPixelFormatType_32BGRA else {
+    throw EncodingError("Unexpected decoded MP4 image format")
+  }
+  guard CVPixelBufferLockBaseAddress(a, .readOnly) == kCVReturnSuccess else {
+    throw EncodingError("Cannot read first MP4 pixel buffer")
+  }
+  defer { CVPixelBufferUnlockBaseAddress(a, .readOnly) }
+  guard CVPixelBufferLockBaseAddress(b, .readOnly) == kCVReturnSuccess else {
+    throw EncodingError("Cannot read second MP4 pixel buffer")
+  }
+  defer { CVPixelBufferUnlockBaseAddress(b, .readOnly) }
+  guard let aBytes = CVPixelBufferGetBaseAddress(a)?.assumingMemoryBound(to: UInt8.self),
+        let bBytes = CVPixelBufferGetBaseAddress(b)?.assumingMemoryBound(to: UInt8.self) else {
+    throw EncodingError("Missing MP4 pixel data")
+  }
+  let aStride = CVPixelBufferGetBytesPerRow(a)
+  let bStride = CVPixelBufferGetBytesPerRow(b)
+  var total = 0
+  for y in 0..<height {
+    let aRow = aBytes + y * aStride
+    let bRow = bBytes + y * bStride
+    for x in stride(from: 0, to: width * 4, by: 4) {
+      total += abs(Int(aRow[x]) - Int(bRow[x]))
+      total += abs(Int(aRow[x + 1]) - Int(bRow[x + 1]))
+      total += abs(Int(aRow[x + 2]) - Int(bRow[x + 2]))
+    }
+  }
+  return Double(total) / Double(width * height * 3)
+}
+
+func verifyMP4(in url: URL) async throws {
   let asset = AVURLAsset(url: url)
   guard let track = try await asset.loadTracks(withMediaType: .video).first else {
     throw EncodingError("MP4 has no video track")
@@ -964,9 +1037,21 @@ func verifyKeyframes(in url: URL) async throws {
     let times = missing.sorted().map { String($0 / Int64(fps)) }.joined(separator: ", ")
     throw EncodingError("MP4 is missing required keyframes at seconds \\(times)")
   }
+
+  let opening = try readDecodedFrames(in: asset, track: track, decodingFrom: 0, at: [0])
+  let held = try readDecodedFrames(in: asset, track: track, decodingFrom: holdStart, at: [
+    holdStart + Int64(fps) / 2, holdStart + Int64(fps) * 19 / 20
+  ])
+  let openingMAD = try meanRGBDifference(opening[0], held[0])
+  let heldMAD = try meanRGBDifference(held[0], held[1])
+  // Treat sub-level RGB differences as ordinary quantization noise.
+  let limit = max(0.75, 3 * heldMAD)
+  guard openingMAD <= limit else {
+    throw EncodingError(String(format: "MP4 loop seam: opening MAD %.3f, held MAD %.3f, limit %.3f", openingMAD, heldMAD, limit))
+  }
 }
 
-func encode() async throws {
+func encode() async throws -> URL {
   let args = CommandLine.arguments
   let frames = try FileHandle(forReadingFrom: URL(fileURLWithPath: args[1]))
   defer { try? frames.close() }
@@ -1015,7 +1100,13 @@ func encode() async throws {
   }
 
   let forceKeyframe = [kVTEncodeFrameOptionKey_ForceKeyFrame as String: true] as CFDictionary
-  for i in 0..<frameCount {
+  for index in -Int64(fps)..<Int64(frameCount) {
+    if index == 0 {
+      let prerollEnd = CMTime(value: -1, timescale: fps)
+      try checkVT(VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: prerollEnd), "Draining H.264 pre-roll")
+      try output.checkFailure()
+    }
+    let i = index < 0 ? frameCount + Int(index) : Int(index)
     try autoreleasepool {
       try frames.seek(toOffset: offsets[i])
       let count = Int(offsets[i + 1] - offsets[i])
@@ -1023,27 +1114,27 @@ func encode() async throws {
             let buffer = pixelBuffer(from: jpeg, pool: pool) else {
         throw EncodingError("Cannot decode frame \\(i)")
       }
-      let index = CMTimeValue(i)
       let pts = CMTime(value: index, timescale: fps)
       var flags = VTEncodeInfoFlags()
       try checkVT(VTCompressionSessionEncodeFrame(
         session, imageBuffer: buffer, presentationTimeStamp: pts, duration: frameDuration,
         frameProperties: keyframes.contains(index) ? forceKeyframe : nil, infoFlagsOut: &flags
       ) { status, info, sample in
-        output.receive(status, info, sample)
-      }, "Submitting frame \\(i)")
-      guard !flags.contains(.frameDropped) else { throw EncodingError("Encoder dropped frame \\(i)") }
+        output.receive(status, info, sample, at: index)
+      }, "Submitting frame \\(index)")
+      guard !flags.contains(.frameDropped) else { throw EncodingError("Encoder dropped frame \\(index)") }
       try output.checkFailure()
     }
   }
 
   try checkVT(VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid), "Draining H.264 session")
   try await output.finish(frameCount: frameCount)
-  try await verifyKeyframes(in: outURL)
+  return outURL
 }
 
 do {
-  try await encode()
+  let outURL = try await encode()
+  try await verifyMP4(in: outURL)
 } catch {
   FileHandle.standardError.write(Data("MP4 encoding failed: \\(error)\\n".utf8))
   exit(EXIT_FAILURE)
