@@ -50,6 +50,8 @@ export function initLandingMotion({ shell, win = window }) {
   let scenes = null;
   let revealObserver = null;
   let depthLayers = [];
+  let darkRanges = [];
+  let headerBottom = 0;
   let heroHeight = 1;
   let frameId = null;
   const cleanups = [];
@@ -64,11 +66,19 @@ export function initLandingMotion({ shell, win = window }) {
       const rect = element.getBoundingClientRect();
       return { element, depth: Number(element.dataset.depth) || 1, center: rect.top + scrollY + rect.height / 2 };
     });
+    headerBottom = headerHeight();
+    darkRanges = [...shell.querySelectorAll('[data-canvas="dark"]')].map(element => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top + scrollY, bottom: rect.bottom + scrollY };
+    });
     paint(scrollY);
   }
 
   function paint(scrollY) {
     header?.classList.toggle("landing-header-scrolled", scrollY > HEADER_SCROLLED_AT);
+    // The header goes dark over dark canvases so it never sits as a bright bar above a dark scene.
+    const probe = scrollY + headerBottom;
+    header?.classList.toggle("landing-header-on-dark", darkRanges.some(range => probe >= range.top && probe < range.bottom));
     if (reduced()) return;
     shell.style.setProperty("--hero-p", clamp(scrollY / heroHeight, 0, 1).toFixed(4));
     const viewportCenter = scrollY + win.innerHeight / 2;
@@ -191,7 +201,7 @@ export function initLandingMotion({ shell, win = window }) {
       if (measureFrame !== null) win.cancelAnimationFrame(measureFrame);
       root.classList.remove("motion-engine", "motion-hold");
       shell.classList.remove("motion-ready");
-      header?.classList.remove("landing-header-scrolled");
+      header?.classList.remove("landing-header-scrolled", "landing-header-on-dark");
       delete win.__motion;
     }
   };

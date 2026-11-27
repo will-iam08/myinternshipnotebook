@@ -23,7 +23,8 @@ const clock = seconds => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:$
 export const SCENE_UPDATES = Object.freeze({
   clipper(p, stage) {
     const filled = Math.min(5, Math.floor((p - 0.5) / 0.056) + 1);
-    setCounter(stage, "clip", p < 0.5 ? "Clip" : `Filled ${p >= 0.78 ? 5 : filled} fields`);
+    const count = p >= 0.78 ? 5 : filled;
+    setCounter(stage, "clip", p < 0.5 ? "Clip" : `Filled ${count} ${count === 1 ? "field" : "fields"}`);
   },
   pipeline(p, stage) {
     const moved = p >= 0.72;
@@ -47,10 +48,10 @@ export const SCENE_UPDATES = Object.freeze({
   },
   insights(p, stage) {
     const rings = span(p, 0.22, 0.6);
-    const bars = span(p, 0.06, 0.22);
+    const bars = span(p, 0.06, 0.5);
     setCounter(stage, "r1", `${Math.round(rings * 75)}%`);
     setCounter(stage, "r2", `${Math.round(rings * 33)}%`);
-    setCounter(stage, "r3", `${Math.round(rings * 14)}%`);
+    setCounter(stage, "r3", `${Math.round(rings * 11)}%`);
     setCounter(stage, "saved", String(Math.round(bars * 24)));
     setCounter(stage, "appliedTotal", String(Math.round(bars * 18)));
     setCounter(stage, "interviews", String(Math.round(bars * 6)));

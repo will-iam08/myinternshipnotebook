@@ -3473,7 +3473,7 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 }
 :root[data-theme="dark"] .scene[data-canvas="light"] {
   --canvas-color: #161b26;
-  --canvas-image: linear-gradient(150deg, #1b2230 0%, #161b26 54%, #111620 100%);
+  --canvas-image: radial-gradient(ellipse at 42% 0%, #262f42 0%, transparent 68%), radial-gradient(ellipse at 80% 110%, #2563eb1f, transparent 60%), linear-gradient(150deg, #1b2230 0%, #161b26 54%, #111620 100%);
   --card: #202838;
   --line: #2e394f;
 }
@@ -3629,6 +3629,8 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 .sv-chips { display: grid; gap: .55em; grid-template-columns: 1fr 1fr; margin-top: .4em; }
 .sv-chip {
   --c: clamp(0, (var(--p) - .5 - .05 * var(--i)) / .14, 1);
+  --fill: clamp(0, (var(--p) - .4 - .025 * var(--i)) / .06, 1);
+  position: relative;
   background: var(--paper-2, var(--paper));
   border: 1px solid var(--line);
   border-radius: .6em;
@@ -3636,6 +3638,18 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   opacity: calc(1 - .5 * var(--c));
   padding: .45em .6em;
   transform: translate3d(calc(26px * var(--c)), calc(-16px * var(--c)), 0);
+}
+.sv-chip b { display: block; opacity: var(--fill); }
+.sv-chip::after {
+  background: var(--line);
+  border-radius: 99px;
+  bottom: .7em;
+  content: "";
+  height: .55em;
+  left: .6em;
+  opacity: calc(1 - var(--fill));
+  position: absolute;
+  width: 55%;
 }
 .sv-notebook {
   display: grid;
@@ -3669,7 +3683,7 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 [data-scene="clipper"] .sv-cursor {
   opacity: calc(var(--b1) - var(--b4));
   transform:
-    translate(calc((78 - 8 * var(--b1) - 9 * var(--b2) + 24 * var(--b4)) * 1cqw), calc((70 - 30 * var(--b1) - 28 * var(--b2) + 68 * var(--b4)) * var(--sh)))
+    translate(calc((78 - 8 * var(--b1) - 6 * var(--b2) + 21 * var(--b4)) * 1cqw), calc((70 - 30 * var(--b1) - 24 * var(--b2) + 64 * var(--b4)) * var(--sh)))
     scale(calc(1 - .14 * var(--press) + .14 * var(--rebound)));
 }
 
@@ -3694,12 +3708,12 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   display: grid;
   gap: .9em;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  height: 84%;
   left: 4%;
-  opacity: var(--b1);
+  min-height: 70%;
+  opacity: calc(.7 + .3 * var(--b1));
   padding: .9em;
   position: absolute;
-  top: 8%;
+  top: 10%;
   transform:
     translate3d(calc(110px * (1 - var(--b1))), calc(-18px * var(--b6)), calc(-24px * (1 - var(--b2)) + 16px * var(--b6)))
     rotateY(calc((-18deg + 4deg * var(--b1) + 14deg * var(--b2)) * var(--tilt)))
@@ -3727,7 +3741,7 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   box-shadow: var(--shadow-md);
   position: relative;
   transform:
-    translate3d(calc((100% + .9em) * var(--b4)), calc(-10px * var(--b3) - 14px * var(--b4) + (100% + .6em + 24px) * var(--b5)), calc(44px * var(--b3) - 44px * var(--b5)))
+    translate3d(calc((100% + .9em) * var(--b4)), calc(-6px * var(--b3) + 6px * var(--b4) + (100% + .6em) * var(--b5)), calc(44px * var(--b3) - 44px * var(--b5)))
     rotate(calc(-3deg * var(--b3) + 5deg * var(--b4) - 2deg * var(--b5)))
     scale(calc(1 + .05 * var(--b3) - .05 * var(--b5)));
   z-index: 3;
@@ -3736,7 +3750,7 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 .sv-slot {
   border: 2px dashed #1baf7a;
   border-radius: .7em;
-  height: 3.4em;
+  height: 3.9em;
   opacity: calc(var(--slot) * (1 - var(--b5)));
 }
 .sv-stamp {
@@ -3751,11 +3765,18 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   transform: translateY(calc(12px * (1 - var(--stamp))));
 }
 .sv-bump { transform: scale(calc(1 + .09 * var(--bump-up) - .09 * var(--bump-down))); }
-[data-scene="pipeline"] .sv-cursor {
-  opacity: calc(var(--b2) - var(--b5));
-  transform:
-    translate(calc((90 - 72 * var(--b2) + 30 * var(--b4) + 22 * var(--b5)) * 1cqw), calc((80 - 52 * var(--b2) + 20 * var(--b4) + 35 * var(--b5)) * var(--sh)))
-    scale(calc(1 - .14 * var(--b3) + .14 * var(--b5)));
+/* The free cursor walks to the card; a held cursor then rides on it during the drag. */
+[data-scene="pipeline"] .sv-cursor:not(.sv-cursor-held) {
+  opacity: calc(var(--b2) - min(1, var(--b3) * 20));
+  transform: translate(calc((90 - 63 * var(--b2)) * 1cqw), calc((80 - 50 * var(--b2)) * var(--sh)));
+}
+.sv-cursor-held {
+  bottom: -1.6em;
+  left: auto;
+  opacity: calc(min(1, var(--b3) * 20) - var(--b6));
+  right: -1em;
+  top: auto;
+  transform: scale(calc(.86 + .14 * var(--b5)));
 }
 
 /* ---------- Scene 3 · import ---------- */
@@ -3769,7 +3790,6 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 .sv-sheet {
   display: grid;
   gap: .4em;
-  height: 86%;
   left: 3%;
   opacity: calc(1 - .45 * var(--stack));
   padding: .9em;
@@ -3790,18 +3810,17 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   display: flex;
   gap: .6em;
   justify-content: space-between;
-  opacity: calc(var(--in) - var(--fold));
+  opacity: calc(.35 + .65 * var(--in) - .5 * var(--fold));
   padding: .55em .7em;
-  transform: translateX(calc(48px * (1 - var(--in)))) rotateX(calc(-88deg * var(--fold)));
-  transform-origin: 50% 0;
+  transform: translateX(calc(48px * (1 - var(--in)) + 10px * var(--fold)));
 }
+.sv-csv-row::after { color: #1baf7a; content: "\2713"; font-weight: 800; opacity: var(--fold); }
 .sv-csv-row code { color: var(--muted); font: 600 .82em/1.2 var(--mono); }
 .sv-csv-row b { color: var(--accent-ink); font-size: .85em; }
 .sv-tray {
   align-content: start;
   display: grid;
   gap: .5em;
-  height: 86%;
   left: 59%;
   opacity: var(--tray);
   padding: .9em;
@@ -3829,9 +3848,8 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   opacity: var(--u);
   padding: .5em .65em;
   transform:
-    translate3d(0, calc(-16px * (1 - var(--u)) - var(--i) * 1.1em * var(--stack)), calc(var(--i) * 8px * var(--stack)))
-    rotateX(calc(88deg * (1 - var(--u))))
-    scale(calc(1 - (3 - var(--i)) * .03 * var(--stack)));
+    translate3d(0, calc(-16px * (1 - var(--u)) - 4px * var(--stack)), calc(6px * var(--stack)))
+    rotateX(calc(88deg * (1 - var(--u))));
   transform-origin: 50% 0;
 }
 .sv-icard .pill { font-size: .85em; }
@@ -3847,11 +3865,10 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 .sv-question {
   display: grid;
   gap: .4em;
-  height: 38%;
   left: 3%;
-  opacity: calc(.5 + .5 * var(--b1));
+  opacity: calc(.8 + .2 * var(--b1));
   padding: 1em 1.1em;
-  top: 5%;
+  top: 4%;
   transform: translate3d(0, calc(20px * (1 - var(--b1))), -24px) rotateX(calc(8deg * (1 - var(--b1)) * var(--tilt)));
   width: 68%;
   align-content: start;
@@ -3860,11 +3877,10 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 .sv-timer {
   display: grid;
   gap: .45em;
-  height: 66%;
   left: 30%;
   opacity: calc(.85 * var(--b1) + .15 * var(--b2));
   padding: .9em 1em;
-  top: 30%;
+  top: 40%;
   transform:
     translate3d(calc(32px * (1 - var(--b2))), calc(48px * (1 - var(--b2)) - 14px * var(--b4)), calc(-36px + 84px * var(--b2) + 8px * var(--b4)))
     rotateY(calc(12deg * (1 - var(--b2)) * var(--tilt)))
@@ -3892,8 +3908,8 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   --s: clamp(0, (var(--p) - .42 - .11 * var(--i)) / .11, 1);
   display: block;
   font-size: .9em;
-  opacity: var(--s);
-  transform: translateY(calc(105% * (1 - var(--s))));
+  opacity: calc(.25 + .75 * var(--s));
+  transform: translateY(calc(40% * (1 - var(--s))));
 }
 .sv-star b { color: var(--accent-ink); display: inline-block; width: 1.3em; }
 .sv-summary {
@@ -3910,13 +3926,12 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 /* ---------- Scene 5 · reminders ---------- */
 [data-scene="reminders"] [data-scene-stage] {
   --b1: clamp(0, var(--p) / .26, 1);
-  --head: clamp(0, (var(--p) - .46) / .3, 1);
-  --head-in: clamp(0, (var(--p) - .46) / .04, 1);
+  --head: clamp(0, (var(--p) - .26) / .5, 1);
+  --head-in: clamp(0, (var(--p) - .24) / .04, 1);
   --b4: clamp(0, (var(--p) - .76) / .24, 1);
   --ics: clamp(0, (var(--p) - .84) / .12, 1);
 }
 .sv-calendar {
-  height: 58%;
   left: 4%;
   opacity: calc(.35 + .65 * var(--b1) - .35 * var(--b4));
   padding: .8em .9em;
@@ -3941,8 +3956,8 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   font-size: .78em;
   font-weight: 650;
   gap: .2em;
-  min-height: 4.6em;
-  padding: .4em;
+  min-height: 6.2em;
+  padding: .45em;
   position: relative;
 }
 .sv-cal-grid b { color: var(--ink); font-size: 1.3em; }
@@ -3977,7 +3992,7 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   left: -1px;
   padding: .2em .35em;
   position: absolute;
-  top: -1.2em;
+  bottom: -1.3em;
 }
 .sv-ics {
   background: color-mix(in srgb, #1baf7a 18%, transparent);
@@ -3985,10 +4000,9 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
   font-size: .75em;
   font-weight: 700;
   opacity: var(--ics);
+  display: inline-block;
+  margin-top: 1.4em;
   padding: .25em .6em;
-  position: absolute;
-  right: .9em;
-  top: .7em;
   transform: translateX(calc(14px * (1 - var(--ics))));
 }
 .sv-agenda { align-items: center; display: flex; gap: .7em; padding: .7em .9em; }
@@ -3996,15 +4010,15 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 .sv-agenda-next {
   left: 10%;
   opacity: calc(.55 * var(--b1) + .45 * var(--b4));
-  top: 64%;
+  top: 58%;
   transform: translate3d(0, calc(14px - 42px * var(--b4)), calc(44px * var(--b4))) scale(calc(.96 + .08 * var(--b4)));
   width: 80%;
   z-index: 2;
 }
 .sv-agenda-later {
   left: 14%;
-  opacity: calc(.55 * var(--b1) + .23 * var(--b4));
-  top: 78%;
+  opacity: calc(.55 * var(--b1) + .35 * var(--b4));
+  top: 79%;
   transform: translate3d(0, 6px, -16px) scale(.94);
   width: 72%;
 }
@@ -4012,7 +4026,7 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 /* ---------- Scene 6 · insights ---------- */
 [data-scene="insights"] [data-scene-stage] {
   --b1: clamp(0, var(--p) / .22, 1);
-  --bars: clamp(0, (var(--p) - .06) / .22, 1);
+  --bars: clamp(0, (var(--p) - .06) / .5, 1);
   --b2: clamp(0, (var(--p) - .22) / .32, 1);
   --rings: clamp(0, (var(--p) - .22) / .6, 1);
   --cards: clamp(0, (var(--p) - .18) / .14, 1);
@@ -4028,16 +4042,15 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 .sv-funnel {
   display: grid;
   gap: .55em;
-  height: 64%;
   left: 4%;
-  opacity: calc(.35 + .65 * var(--b1));
+  opacity: calc(.7 + .3 * var(--b1));
   padding: 1em;
-  top: 8%;
+  top: 3%;
   transform:
     translate3d(0, calc(16px * (1 - var(--b1)) - 12px * var(--b2) - 12px * var(--b3)), calc(-28px * (1 - var(--b1))))
     rotateX(calc(12deg * (1 - var(--b1)) * var(--tilt)))
     rotateY(calc(10deg * (1 - var(--b1)) * var(--tilt)));
-  width: 60%;
+  width: 92%;
   align-content: start;
 }
 .sv-funnel-title { font: 700 1.1em/1.2 var(--serif); }
@@ -4062,7 +4075,31 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 }
 .sv-metric b { font: 700 1.35em/1 var(--serif); }
 .sv-metric .sv-ring-arc { stroke-dashoffset: calc(100 - 100 * var(--v) * var(--rings)); }
-.sv-metric-a { height: 40%; left: 68%; top: 4%; transform: translate3d(0, calc(18px * (1 - var(--b2)) - 17px * var(--b3)), 24px); width: 28%; }
-.sv-metric-b { height: 42%; left: 66%; top: 50%; transform: translate3d(0, calc(22px * (1 - var(--b2)) - 18px * var(--b3)), 48px); width: 30%; }
-.sv-metric-c { height: 30%; left: 8%; top: 66%; transform: translate3d(0, calc(18px * (1 - var(--b2)) - 15px * var(--b3)), 24px); width: 30%; }
-.sv-metric-c .sv-ring { height: 2.6em; width: 2.6em; }
+.sv-metric { height: 38%; top: 58%; width: 28.6%; }
+.sv-metric-a { left: 4%; transform: translate3d(0, calc(18px * (1 - var(--b2)) - 17px * var(--b3)), 24px); }
+.sv-metric-b { left: 35.7%; transform: translate3d(0, calc(22px * (1 - var(--b2)) - 18px * var(--b3)), 48px); }
+.sv-metric-c { left: 67.4%; transform: translate3d(0, calc(18px * (1 - var(--b2)) - 15px * var(--b3)), 24px); }
+
+/* The notebook's desk frame (body padding) does not apply to the full-bleed welcome page. */
+:root[data-shell="landing"] body { padding: 0; }
+@media (min-width: 1024px) {
+  .scene > [data-scene-stage].feature-card.feature-row {
+    gap: clamp(32px, 4.5vw, 80px);
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  }
+  .scene > [data-scene-stage].feature-card.feature-row.feature-row-reverse { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); }
+  .sv-stage { font-size: clamp(11px, 1.8cqw, 15px); }
+}
+
+.motion-ready .landing-header.landing-header-scrolled.landing-header-on-dark {
+  --ink: #f1f5f9;
+  --ink-2: #cbd5e1;
+  --muted: #9eb0c7;
+  --line: rgba(255, 255, 255, .08);
+  --line-strong: rgba(255, 255, 255, .16);
+  --card: #161c29;
+  --paper: #0f131c;
+  background: rgba(10, 13, 20, .78);
+  border-bottom-color: rgba(255, 255, 255, .08);
+  color: #f5f5f7;
+}

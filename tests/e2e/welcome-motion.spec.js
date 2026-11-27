@@ -210,3 +210,13 @@ test.describe("scroll scenes", () => {
     await expect(page.locator('[data-scene="clipper"] .feature-title')).toHaveText("One-Click Job Clipper and Paste Autofill");
   });
 });
+
+test("the header turns dark while a dark scene sits under it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium", "Desktop layout");
+  await openWelcome(page);
+  const header = page.locator(".landing-header");
+  await sceneProgressAt(page, "pipeline", 0.5);
+  await expect(header).toHaveClass(/landing-header-on-dark/);
+  await sceneProgressAt(page, "clipper", 0.5);
+  await expect(header).not.toHaveClass(/landing-header-on-dark/);
+});
