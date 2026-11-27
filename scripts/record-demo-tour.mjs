@@ -263,7 +263,7 @@ em { color: var(--accent); font-style: normal; }
 .reticle, .scan-beam { position: absolute; pointer-events: none; }
 .reticle { inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); color: #2563eb; filter: drop-shadow(0 0 5px #447fff9c); }
 .scan-beam { left: 5px; right: 5px; height: 2px; background: #65a0ff; box-shadow: 0 0 12px 3px #488aff83; }
-.quick-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; min-height: 41px; }
+.quick-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; height: 42px; }
 .quick-foot .button { min-width: 168px; }
 .quick-foot > span { color: var(--muted); font-weight: 670; font-size: 14px; }
 .flank { position: absolute; top: 315px; width: 295px; font-size: 48px; font-weight: 750; letter-spacing: -.065em; line-height: 1.03; }
@@ -361,7 +361,7 @@ em { color: var(--accent); font-style: normal; }
 .toast .badge { width: 29px; height: 29px; }
 
 .radar .surface { padding: 24px; }
-.radar-head { position: relative; display: flex; align-items: center; gap: 12px; margin-bottom: 18px; z-index: 1; }
+.radar-head { position: relative; display: flex; align-items: center; gap: 12px; height: 42px; margin-bottom: 18px; z-index: 1; }
 .radar-head h2 { font-size: 30px; letter-spacing: -.05em; }
 .radar-head > .button, .radar-head > .chip { margin-left: auto; }
 .export-menu { position: absolute; right: 0; top: 50px; background: #fff; padding: 6px; border: 1px solid #d3dbe8; border-radius: 12px; box-shadow: 0 12px 24px #0f172a30; }
@@ -475,7 +475,7 @@ function installScene(timeline, icons, logo) {
     const barCard = barExit < 1 ? rig("quick quick-bar", age, { x: 374, y: 229, w: 532, rx: 7, ry: -9, age: t - open, alpha: 1 - barExit }, bar) : "";
     if (t < actions.scan) return head + barCard + paste;
     const scan = progress(t, actions.scan, 4.26, out);
-    const beam = progress(t, actions.scan, 4.18, x => x);
+    const beam = progress(t, actions.scan, 4.18);
     const locked = progress(t, 4.12, 4.42);
     const fields = [
       [stripe.company, "notebook", 3.61], [stripe.role, "file", 3.72], [stripe.location, "pin", 3.83],
