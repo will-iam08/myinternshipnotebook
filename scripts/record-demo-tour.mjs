@@ -826,7 +826,9 @@ html, body {
     \`;
   }
 
-  function renderEntryPrepView(t) {
+  let prepMockHeight = 0;
+  let prepScroll = 0;
+  function renderEntryPrepView(t, scrollTime = t) {
     const { company, role, location, skills } = DEMO.stripe;
     const { practiced, total, score } = DEMO.prep;
     const marked = t >= AT.markPracticed;
@@ -836,13 +838,13 @@ html, body {
     const mockProgress = seg(t, mockStart, mockStart + 1.05, smoothstep);
     const mockScore = Math.round(lerp(62, score, mockProgress));
     const questions = [
-      { text: "Tell me about a system bottleneck you diagnosed and resolved (STAR).", done: marked },
       { text: "Design an idempotent webhook delivery queue with retries in Go.", done: true },
-      { text: "How would you trace a slow SQL query under production load?", done: false }
+      { text: "How would you trace a slow SQL query under production load?", done: false },
+      { text: "Tell me about a system bottleneck you diagnosed and resolved (STAR).", done: marked, featured: true }
     ];
 
     return \`
-      <article class="sheet-page demo-prep-page" style="padding: 18px 28px 22px 76px">
+      <article class="sheet-page demo-prep-page" style="padding: 18px 28px 22px 76px; transform: translateY(\${-prepScrollOffset(scrollTime)}px)">
         <div class="entry-head">
           <span class="entry-company">\${company}</span>
           <h1 class="entry-role" style="font-size: 1.78rem">\${role}</h1>
@@ -872,17 +874,17 @@ html, body {
           </div>
           <div class="prep-group">
             <ul class="prep-list" style="padding: 4px 14px">
-              \${questions.map((question, i) => \`
-                <li class="prep-q \${question.done ? "is-practiced" : ""}">
+              \${questions.map(question => \`
+                <li class="prep-q \${question.done ? "is-practiced" : ""}" \${question.featured ? 'data-focus="prep-question"' : ""}>
                   <span class="prep-text">\${question.text}</span>
                   <div class="prep-actions">
-                    <button type="button" \${i === 0 ? 'data-anchor="btn-mark-practiced"' : ""}
-                      class="prep-mark practiced \${i === 0 && t >= AT.markPracticed - 0.25 && !marked ? "is-hovered" : ""}" aria-pressed="\${question.done}">\${question.done ? "Practiced" : "Mark practiced"}</button>
+                    <button type="button" \${question.featured ? 'data-anchor="btn-mark-practiced"' : ""}
+                      class="prep-mark practiced \${question.featured && t >= AT.markPracticed - 0.25 && !marked ? "is-hovered" : ""}" aria-pressed="\${question.done}">\${question.done ? "Practiced" : "Mark practiced"}</button>
                   </div>
                 </li>\`).join("")}
             </ul>
           </div>
-          <div class="demo-mock-card">
+          <div class="demo-mock-card" style="min-height: \${prepMockHeight}px">
             <div class="demo-mock-score-box">
               <strong style="white-space:nowrap">\${t >= mockStart ? mockScore + " / 100" : "Mock"}</strong>
               <span>\${t >= mockStart ? "Readiness" : "Interview"}</span>
@@ -1057,13 +1059,18 @@ html, body {
   const BOARD_TOP = ".board :is(.column.st-APPLIED, .column.st-INTERVIEW) :is(.column-head, .column-cards > :first-child)";
   const PYTHON_CHIP = '[data-anchor="chip-python"]';
   const RADAR = '[data-anchor="radar-card"]';
+  const PREP_FULL = ".demo-prep-page :is(.prep-group, .demo-mock-card)";
+  const PREP_DETAIL = '.demo-prep-page :is([data-focus="prep-question"], .demo-mock-card)';
+  const PREP_SCROLL_START = CHAPTER.prep + 0.4;
+  const PREP_SCROLL_END = CHAPTER.prep + 1.55;
+  const PREP_HOLD_END = 13.97;
   const FOCUS_SELECTORS = {
     overview: "#demo-window",
     "quick-fill": "#demo-modal .demo-modal-card",
     "board-top": BOARD_TOP,
     "board-python": BOARD_TOP + ", " + PYTHON_CHIP,
     "stripe-interview": '[data-anchor="card-stripe-interview"]',
-    prep: ".demo-prep-page :is(.prep-group, .demo-mock-card)",
+    prep: PREP_FULL,
     openings: ".demo-openings-feed",
     radar: RADAR,
     "radar-export": RADAR + ', [data-anchor="open-export"]',
@@ -1087,9 +1094,9 @@ html, body {
     [8.76, 1.30, "stripe-interview"],
     [9.42, 1.30, "stripe-interview", 105],
     [10.05, 1, "overview"],
-    [10.55, 1, "overview"],
+    [11.10, 1, "overview"],
     [11.9, 1.40, "prep"],
-    [13.97, 1.40, "prep"],
+    [PREP_HOLD_END, 1.40, "prep"],
     [14.75, 1, "overview"],
     [15.38, 1, "overview"],
     [16.25, 1.30, "openings", -42],
@@ -1126,41 +1133,60 @@ html, body {
     return rects.length ? enclosingRect(rects) : null;
   }
 
+  function focusFit(rect) {
+    return Math.min(
+      (VIEW_W - 2 * ${FOCUS_MARGIN}) / (rect.right - rect.left),
+      (VIEW_H - 2 * ${FOCUS_MARGIN}) / (rect.bottom - rect.top)
+    );
+  }
+
+  function prepSelector(finalRect) {
+    return focusFit(finalRect) < 1.2 ? PREP_DETAIL : PREP_FULL;
+  }
+
+  function prepScrollOffset(t) {
+    return prepScroll * seg(t, PREP_SCROLL_START, PREP_SCROLL_END, quintInOut);
+  }
+
+  function verticalAim(rect, scale, offsetY = 0) {
+    const margin = ${FOCUS_MARGIN} + 0.01;
+    const room = VIEW_H - WIN_H * scale;
+    const minRoom = Math.min(room * 0.005, room * 0.995);
+    const maxRoom = Math.max(room * 0.005, room * 0.995);
+    const minAim = margin - (rect.top - WIN_TOP) * scale;
+    const maxAim = VIEW_H - margin - (rect.bottom - WIN_TOP) * scale;
+    const centerY = (rect.top + rect.bottom) / 2 + offsetY;
+    return clamp(clamp(VIEW_H / 2 - (centerY - WIN_TOP) * scale, minAim, maxAim), minRoom, maxRoom);
+  }
+
   function cameraKeyPoses() {
     return CAMERA_KEYS.map(([time, targetScale, focus, offsetY = 0, pan = 0]) => {
       const rect = FOCUS_RECTS[focus];
       if (!rect) throw new Error("Missing camera focus: " + focus);
-      const margin = ${FOCUS_MARGIN} + 0.01;
-      const fit = Math.min(
-        (VIEW_W - 2 * ${FOCUS_MARGIN}) / (rect.right - rect.left),
-        (VIEW_H - 2 * ${FOCUS_MARGIN}) / (rect.bottom - rect.top)
-      );
+      const fit = focusFit(rect);
       // Keep exact-fit shots inside the margin after transform rounding.
       const scale = Math.min(targetScale, fit - 0.0001);
-      const centerY = (rect.top + rect.bottom) / 2 + offsetY;
       const room = VIEW_H - WIN_H * scale;
-      const minRoom = Math.min(room * 0.005, room * 0.995);
-      const maxRoom = Math.max(room * 0.005, room * 0.995);
-      const minAim = margin - (rect.top - WIN_TOP) * scale;
-      const maxAim = VIEW_H - margin - (rect.bottom - WIN_TOP) * scale;
-      const aim = clamp(clamp(VIEW_H / 2 - (centerY - WIN_TOP) * scale, minAim, maxAim), minRoom, maxRoom);
-      const vertical = focus === "overview" || room === 0 ? 0.5 : aim / room;
+      const vertical = focus === "overview" || room === 0 ? 0.5 : verticalAim(rect, scale, offsetY) / room;
       return { time, scale, fit, focus, pan, vertical };
     });
   }
 
   let cameraPoses;
-  function computeCamera(t) {
+  function computeCamera(t, prepRect) {
     const i = cameraPoses.findLastIndex(key => key.time <= t);
     const a = cameraPoses[i];
     const b = cameraPoses[i + 1] ?? a;
     const p = a === b ? 0 : seg(t, a.time, b.time, quintInOut);
     const scale = lerp(a.scale, b.scale, p);
     const horizontal = lerp(a.pan, b.pan, p) + lerp(0.5, 0.02, seg(scale, 1, 1.1, smoothstep));
-    const vertical = lerp(a.vertical, b.vertical, p);
     // Interpolate within the window's overscan so a push-in cannot expose backdrop.
     const tx = (VIEW_W - WIN_W * scale) * horizontal - WIN_LEFT * scale;
-    const ty = (VIEW_H - WIN_H * scale) * vertical - WIN_TOP * scale;
+    let aim = (VIEW_H - WIN_H * scale) * lerp(a.vertical, b.vertical, p);
+    if (prepRect && (a.focus === "prep" || b.focus === "prep")) {
+      aim = lerp(aim, verticalAim(prepRect, scale), seg(scale, 1.02, 1.04, smoothstep));
+    }
+    const ty = aim - WIN_TOP * scale;
     let focus = p < 0.5 ? a.focus : b.focus;
     if (a.focus === "overview" || b.focus === "overview") {
       focus = scale <= 1.02 ? "overview" : a.focus === "overview" ? b.focus : a.focus;
@@ -1210,12 +1236,20 @@ html, body {
     view.innerHTML = renderBoardView(AT.filterPython);
     capture(view, "card-stripe-interview");
     captureFocus("board-python", "stripe-interview");
-    view.innerHTML = renderEntryPrepView(CHAPTER.prep);
+    view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
+    prepMockHeight = view.querySelector(".demo-mock-card").getBoundingClientRect().height;
+    const fullPrep = focusRect("prep", view);
+    if (!fullPrep) throw new Error("Missing camera focus: prep");
+    FOCUS_SELECTORS.prep = prepSelector(fullPrep);
+    const finalPrep = focusRect("prep", view);
+    if (!finalPrep) throw new Error("Missing settled camera focus: prep");
+    prepScroll = Math.max(0, (finalPrep.top + finalPrep.bottom - VIEW_H) / 2);
+    view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
+    captureFocus("prep");
+    view.innerHTML = renderEntryPrepView(CHAPTER.prep, PREP_HOLD_END);
     capture(view, "btn-mark-practiced");
     captureFocus("prep");
-    view.innerHTML = renderEntryPrepView(AT.markPracticed + 0.18);
-    captureFocus("prep");
-    view.innerHTML = renderEntryPrepView(14);
+    view.innerHTML = renderEntryPrepView(AT.markPracticed + 0.18, PREP_HOLD_END);
     captureFocus("prep");
     view.innerHTML = renderOpeningsView(CHAPTER.openings);
     captureFocus("openings");
@@ -1376,7 +1410,13 @@ html, body {
     viewIn.style.opacity = progress;
     viewIn.style.transform = isTransitioning ? \`translateY(\${10 * (1 - progress)}px)\` : "none";
 
-    const cam = computeCamera(t);
+    const camera = document.getElementById("demo-camera");
+    let prepRect;
+    if (start === CHAPTER.prep) {
+      camera.style.transform = "";
+      prepRect = focusRect("prep", viewIn);
+    }
+    const cam = computeCamera(t, prepRect);
     const message = TOASTS.find(([from, until]) => t >= from && t < until);
     toast.style.display = message ? "flex" : "none";
     if (message) {
@@ -1396,7 +1436,7 @@ html, body {
 
     const squareCorners = seg(cam.scale, 1.04, ${ZOOM_COVER_THRESHOLD}, smoothstep);
     document.getElementById("demo-window").style.borderRadius = \`\${16 * (1 - squareCorners)}px\`;
-    document.getElementById("demo-camera").style.transform =
+    camera.style.transform =
       \`translate(\${cam.tx.toFixed(3)}px, \${cam.ty.toFixed(3)}px) scale(\${cam.scale.toFixed(5)})\`;
 
     const cur = cursorState(t);
@@ -1424,6 +1464,7 @@ html, body {
       openingFrame.hidden = t < AT.dissolve;
       openingFrame.style.opacity = seg(t, AT.dissolve, LOOP_END, smoothstep);
     }
+    return cam;
   };
 
   const stageBounds = { left: 0, top: 0, right: VIEW_W, bottom: VIEW_H };
@@ -1455,9 +1496,8 @@ html, body {
   }
 
   window.__auditFrame = function (t) {
-    window.__setDemoTime(t);
+    const cam = window.__setDemoTime(t);
     const time = t >= LOOP_END ? 0 : t;
-    const cam = computeCamera(time);
     const windowEl = document.getElementById("demo-window");
     const win = windowEl.getBoundingClientRect();
     const focus = cam.focus === "overview" ? win : focusRect(cam.focus, windowEl);
