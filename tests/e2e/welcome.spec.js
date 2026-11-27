@@ -448,7 +448,13 @@ test.describe("responsive breakpoints, typography, and performance budget", () =
           thirdPartyScripts.push(response.url());
         }
         // The film loads after the page and has its own size cap (next test).
-        if (response.request().resourceType() === "media") return;
+        // WebKit does not tag video requests as "media", so also match the type and path.
+        const contentType = response.headers()["content-type"] || "";
+        if (
+          response.request().resourceType() === "media" ||
+          contentType.startsWith("video/") ||
+          /\/media\/demo-tour\.(mp4|webm)$/.test(url.pathname)
+        ) return;
         const body = await response.body().catch(() => Buffer.alloc(0));
         totalBytes += body.byteLength;
       } catch {
