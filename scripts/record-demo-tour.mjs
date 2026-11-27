@@ -23,6 +23,7 @@ const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
 const MAX_POSTER_BYTES = 200 * 1024;
 const WEBM_BITRATES = [1250, 1100];
 const MP4_BITRATES = [1400, 1250, 1100];
+const SEAM_PNGS = ["frame-0.png", "frame-29.5.png"];
 const POSTER_TIME = 4.1;
 const CHAPTERS = { clipper: 0, board: 5, prep: 10, openings: 15, calendar: 20, insights: 25 };
 
@@ -843,11 +844,18 @@ func checkVT(_ status: OSStatus, _ operation: String) throws {
   guard status == noErr else { throw EncodingError("\\(operation) failed (OSStatus \\(status))") }
 }
 
+func isSyncFrame(_ sample: CMSampleBuffer) -> Bool {
+  let flags = (CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]])?.first
+  return flags?[kCMSampleAttachmentKey_NotSync as String] as? Bool != true &&
+    flags?[kCMSampleAttachmentKey_PartialSync as String] as? Bool != true
+}
+
 final class MP4Output: @unchecked Sendable {
   private let lock = NSLock()
   private let writer: AVAssetWriter
   private var input: AVAssetWriterInput?
   private var prerollFrames = 0
+  private var heldGOP: [CMSampleBuffer] = []
   private var writtenFrames: Int64 = 0
   private var failure: Error?
 
@@ -870,7 +878,24 @@ final class MP4Output: @unchecked Sendable {
     return input
   }
 
-  func receive(_ status: OSStatus, _ flags: VTEncodeInfoFlags, _ sample: CMSampleBuffer?, at index: Int64) {
+  private func append(_ sample: CMSampleBuffer, at index: Int64) throws {
+    guard index == writtenFrames, CMSampleBufferGetPresentationTimeStamp(sample) == CMTime(value: index, timescale: fps) else {
+      throw EncodingError("Out-of-order encoded frame \\(index), expected \\(writtenFrames)")
+    }
+    let input = try self.input ?? start(with: sample)
+    while !input.isReadyForMoreMediaData {
+      guard writer.status == .writing else {
+        throw EncodingError("MP4 writer stopped: \\(String(describing: writer.error))")
+      }
+      Thread.sleep(forTimeInterval: 0.005)
+    }
+    guard input.append(sample) else {
+      throw EncodingError("Cannot write encoded frame \\(writtenFrames): \\(String(describing: writer.error))")
+    }
+    writtenFrames += 1
+  }
+
+  func receive(_ status: OSStatus, _ flags: VTEncodeInfoFlags, _ sample: CMSampleBuffer?, at index: Int64, forceKeyframe: Bool) {
     lock.withLock {
       guard failure == nil else { return }
       do {
@@ -878,27 +903,19 @@ final class MP4Output: @unchecked Sendable {
         guard !flags.contains(.frameDropped), let sample, CMSampleBufferDataIsReady(sample) else {
           throw EncodingError("Missing encoded frame \\(index)")
         }
-        if index < 0 {
+        guard !forceKeyframe || isSyncFrame(sample) else {
+          throw EncodingError("H.264 did not produce a sync frame at \\(index)")
+        }
+        if index < -Int64(fps) {
           prerollFrames += 1
-          return
-        }
-        if index == 0 && prerollFrames != Int(fps) {
-          throw EncodingError("H.264 completed \\(prerollFrames) of \\(fps) pre-roll frames")
-        }
-        guard index == writtenFrames, CMSampleBufferGetPresentationTimeStamp(sample) == CMTime(value: index, timescale: fps) else {
-          throw EncodingError("Out-of-order encoded frame \\(index), expected \\(writtenFrames)")
-        }
-        let input = try self.input ?? start(with: sample)
-        while !input.isReadyForMoreMediaData {
-          guard writer.status == .writing else {
-            throw EncodingError("MP4 writer stopped: \\(String(describing: writer.error))")
+        } else if index < 0 {
+          guard prerollFrames == Int(fps), index == Int64(heldGOP.count) - Int64(fps) else {
+            throw EncodingError("Incomplete pre-roll or out-of-order held frame \\(index)")
           }
-          Thread.sleep(forTimeInterval: 0.005)
+          heldGOP.append(sample)
+        } else {
+          try append(sample, at: index)
         }
-        guard input.append(sample) else {
-          throw EncodingError("Cannot write encoded frame \\(writtenFrames): \\(String(describing: writer.error))")
-        }
-        writtenFrames += 1
       } catch {
         failure = error
       }
@@ -908,6 +925,27 @@ final class MP4Output: @unchecked Sendable {
   func checkFailure() throws {
     try lock.withLock {
       if let failure { throw failure }
+    }
+  }
+
+  func writeHeldGOP(at start: Int64, count: Int64) throws {
+    try lock.withLock {
+      if let failure { throw failure }
+      guard heldGOP.count == Int(fps), count <= Int64(fps) else {
+        throw EncodingError("H.264 completed \\(heldGOP.count) of \\(fps) held frames")
+      }
+      for (offset, sample) in heldGOP.prefix(Int(count)).enumerated() {
+        let index = start + Int64(offset)
+        var timing = CMSampleTimingInfo(
+          duration: frameDuration, presentationTimeStamp: CMTime(value: index, timescale: fps), decodeTimeStamp: .invalid
+        )
+        var retimed: CMSampleBuffer?
+        try checkVT(CMSampleBufferCreateCopyWithNewTiming(
+          allocator: nil, sampleBuffer: sample, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &retimed
+        ), "Retiming held frame \\(index)")
+        guard let retimed else { throw EncodingError("Missing retimed held frame \\(index)") }
+        try append(retimed, at: index)
+      }
     }
   }
 
@@ -1011,6 +1049,16 @@ func meanRGBDifference(_ a: CVPixelBuffer, _ b: CVPixelBuffer) throws -> Double 
   return Double(total) / Double(width * height * 3)
 }
 
+func writeSeamPNG(_ frame: CVPixelBuffer, to url: URL) throws {
+  var image: CGImage?
+  try checkVT(VTCreateCGImageFromCVPixelBuffer(frame, options: nil, imageOut: &image), "Converting decoded MP4 frame")
+  guard let image, let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+    throw EncodingError("Cannot create PNG at \\(url.path)")
+  }
+  CGImageDestinationAddImage(destination, image, nil)
+  guard CGImageDestinationFinalize(destination) else { throw EncodingError("Cannot write PNG at \\(url.path)") }
+}
+
 func verifyMP4(in url: URL) async throws {
   let asset = AVURLAsset(url: url)
   guard let track = try await asset.loadTracks(withMediaType: .video).first else {
@@ -1026,11 +1074,7 @@ func verifyMP4(in url: URL) async throws {
     let pts = CMSampleBufferGetPresentationTimeStamp(sample)
     let index = CMTimeConvertScale(pts, timescale: fps, method: .roundHalfAwayFromZero).value
     guard missing.contains(index), pts == CMTime(value: index, timescale: fps) else { continue }
-    let flags = (CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]])?.first
-    if flags?[kCMSampleAttachmentKey_NotSync as String] as? Bool != true,
-       flags?[kCMSampleAttachmentKey_PartialSync as String] as? Bool != true {
-      missing.remove(index)
-    }
+    if isSyncFrame(sample) { missing.remove(index) }
   }
   guard reader.status == .completed else { throw EncodingError("MP4 keyframe read failed: \\(String(describing: reader.error))") }
   guard missing.isEmpty else {
@@ -1047,7 +1091,15 @@ func verifyMP4(in url: URL) async throws {
   // Treat sub-level RGB differences as ordinary quantization noise.
   let limit = max(0.75, 3 * heldMAD)
   guard openingMAD <= limit else {
-    throw EncodingError(String(format: "MP4 loop seam: opening MAD %.3f, held MAD %.3f, limit %.3f", openingMAD, heldMAD, limit))
+    let message = String(format: "MP4 loop seam: opening MAD %.3f, held MAD %.3f, limit %.3f", openingMAD, heldMAD, limit)
+    let directory = url.deletingLastPathComponent()
+    do {
+      try writeSeamPNG(opening[0], to: directory.appendingPathComponent("${SEAM_PNGS[0]}"))
+      try writeSeamPNG(held[0], to: directory.appendingPathComponent("${SEAM_PNGS[1]}"))
+    } catch {
+      throw EncodingError("\\(message). Cannot save seam diagnostics: \\(error)")
+    }
+    throw EncodingError(message)
   }
 }
 
@@ -1079,55 +1131,90 @@ func encode() async throws -> URL {
   guard let session else { throw EncodingError("Missing H.264 session") }
   defer { VTCompressionSessionInvalidate(session) }
 
+  let bitrate = Int(args[4])!
+  func setQuality(_ quality: Float32) throws {
+    let status = VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: quality as CFNumber)
+    if status != kVTPropertyNotSupportedErr && status != kVTPropertyReadOnlyErr {
+      try checkVT(status, "Setting H.264 quality")
+    }
+  }
+  func setBudget(_ rate: Int) throws {
+    let limits = [${MAX_VIDEO_BYTES}, ${DURATION_SEC}, rate / 4, 1] as CFArray
+    try checkVT(VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: rate as CFNumber), "Setting H.264 bitrate")
+    try checkVT(VTSessionSetProperty(session, key: kVTCompressionPropertyKey_DataRateLimits, value: limits), "Setting H.264 rate limits")
+  }
   let properties: [String: Any] = [
     kVTCompressionPropertyKey_ProfileLevel as String: kVTProfileLevel_H264_High_AutoLevel,
-    kVTCompressionPropertyKey_AverageBitRate as String: Int(args[4])!,
-    kVTCompressionPropertyKey_DataRateLimits as String: [${MAX_VIDEO_BYTES}, ${DURATION_SEC}],
     kVTCompressionPropertyKey_ExpectedFrameRate as String: fps,
     kVTCompressionPropertyKey_MaxKeyFrameInterval as String: ${FPS},
     kVTCompressionPropertyKey_RealTime as String: false,
     kVTCompressionPropertyKey_AllowFrameReordering as String: false,
     kVTCompressionPropertyKey_MaxFrameDelayCount as String: 8
   ]
-  let qualityStatus = VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: Float32(0.8) as CFNumber)
-  if qualityStatus != kVTPropertyNotSupportedErr && qualityStatus != kVTPropertyReadOnlyErr {
-    try checkVT(qualityStatus, "Setting H.264 quality")
-  }
   try checkVT(VTSessionSetProperties(session, propertyDictionary: properties as CFDictionary), "Configuring H.264 session")
+  try setQuality(0.8)
+  try setBudget(bitrate)
   try checkVT(VTCompressionSessionPrepareToEncodeFrames(session), "Preparing H.264 session")
   guard let pool = VTCompressionSessionGetPixelBufferPool(session) else {
     throw EncodingError("Missing H.264 pixel buffer pool")
   }
 
   let forceKeyframe = [kVTEncodeFrameOptionKey_ForceKeyFrame as String: true] as CFDictionary
-  for index in -Int64(fps)..<Int64(frameCount) {
-    if index == 0 {
-      let prerollEnd = CMTime(value: -1, timescale: fps)
-      try checkVT(VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: prerollEnd), "Draining H.264 pre-roll")
-      try output.checkFailure()
+  let gop = Int64(fps)
+  func jpeg(at index: Int64) throws -> Data {
+    let i = Int(index)
+    try frames.seek(toOffset: offsets[i])
+    let count = Int(offsets[i + 1] - offsets[i])
+    guard let jpeg = try frames.read(upToCount: count), jpeg.count == count else {
+      throw EncodingError("Cannot read frame \\(index)")
     }
-    let i = index < 0 ? frameCount + Int(index) : Int(index)
+    return jpeg
+  }
+  let heldJPEG = try jpeg(at: holdStart)
+  guard try jpeg(at: 0) == heldJPEG else { throw EncodingError("Opening and held source frames differ") }
+  var openingPrefix: Int64 = 1
+  while openingPrefix < gop, try jpeg(at: openingPrefix) == heldJPEG { openingPrefix += 1 }
+
+  func submit(_ index: Int64, source: Int64) throws {
     try autoreleasepool {
-      try frames.seek(toOffset: offsets[i])
-      let count = Int(offsets[i + 1] - offsets[i])
-      guard let jpeg = try frames.read(upToCount: count), jpeg.count == count,
-            let buffer = pixelBuffer(from: jpeg, pool: pool) else {
-        throw EncodingError("Cannot decode frame \\(i)")
+      guard let buffer = pixelBuffer(from: try jpeg(at: source), pool: pool) else {
+        throw EncodingError("Cannot decode frame \\(source)")
       }
       let pts = CMTime(value: index, timescale: fps)
+      let isKeyframe = index == -gop || index == openingPrefix || keyframes.contains(index)
       var flags = VTEncodeInfoFlags()
       try checkVT(VTCompressionSessionEncodeFrame(
         session, imageBuffer: buffer, presentationTimeStamp: pts, duration: frameDuration,
-        frameProperties: keyframes.contains(index) ? forceKeyframe : nil, infoFlagsOut: &flags
+        frameProperties: isKeyframe ? forceKeyframe : nil, infoFlagsOut: &flags
       ) { status, info, sample in
-        output.receive(status, info, sample, at: index)
+        output.receive(status, info, sample, at: index, forceKeyframe: isKeyframe)
       }, "Submitting frame \\(index)")
       guard !flags.contains(.frameDropped) else { throw EncodingError("Encoder dropped frame \\(index)") }
       try output.checkFailure()
     }
   }
 
+  func drain(through index: Int64) throws {
+    try checkVT(VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: CMTime(value: index, timescale: fps)), "Draining H.264 through frame \\(index)")
+    try output.checkFailure()
+  }
+
+  for offset in 0..<gop { try submit(offset - 2 * gop, source: holdStart + offset) }
+  try drain(through: -gop - 1)
+  try setQuality(0.85)
+  try setBudget(bitrate * 2)
+  for offset in 0..<gop { try submit(offset - gop, source: holdStart + offset) }
+  try drain(through: -1)
+
+  // Reuse the held access units only while the opening source is identical.
+  try output.writeHeldGOP(at: 0, count: openingPrefix)
+  for index in openingPrefix..<gop { try submit(index, source: index) }
+  if openingPrefix < gop { try drain(through: gop - 1) }
+  try setQuality(0.8)
+  try setBudget(bitrate)
+  for index in gop..<holdStart { try submit(index, source: index) }
   try checkVT(VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid), "Draining H.264 session")
+  try output.writeHeldGOP(at: holdStart, count: gop)
   try await output.finish(frameCount: frameCount)
   return outURL
 }
@@ -1145,7 +1232,20 @@ do {
 
   for (const kbps of MP4_BITRATES) {
     fs.rmSync(outPath, { force: true });
-    runEncoder("/usr/bin/swift", [swiftScript, framesPath, offsetsPath, outPath, String(kbps * 1000)], "MP4 encoding");
+    try {
+      runEncoder("/usr/bin/swift", [swiftScript, framesPath, offsetsPath, outPath, String(kbps * 1000)], "MP4 encoding");
+    } catch (error) {
+      const pngs = SEAM_PNGS.filter(name => fs.existsSync(path.join(framesDir, name)));
+      if (pngs.length) {
+        const diagnostics = fs.mkdtempSync(path.join(os.tmpdir(), "demo-tour-seam-"));
+        for (const name of pngs) {
+          const destination = path.join(diagnostics, name);
+          fs.copyFileSync(path.join(framesDir, name), destination);
+          console.error(`MP4 seam diagnostic: ${destination}`);
+        }
+      }
+      throw error;
+    }
     const size = fs.statSync(outPath).size;
     if (size > 0 && size <= MAX_VIDEO_BYTES) return size;
   }
