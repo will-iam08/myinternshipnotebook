@@ -21,7 +21,8 @@ const LOOP_REST_START = DURATION_SEC - 1;
 const TOTAL_FRAMES = FPS * DURATION_SEC;
 const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
 const MAX_POSTER_BYTES = 200 * 1024;
-const BITRATES = [1400, 1250, 1100];
+const WEBM_BITRATES = [1250, 1100];
+const MP4_BITRATES = [1400, 1250, 1100];
 const POSTER_TIME = 4.1;
 const CHAPTERS = { clipper: 0, board: 5, prep: 10, openings: 15, calendar: 20, insights: 25 };
 
@@ -85,10 +86,8 @@ function createTimeline(chapters, loopEnd) {
       { shot: previous, t: shot.start, shift: -112 * pan, opacity: 1 - mix },
       { shot, t, shift: 112 * (1 - pan), opacity: mix }
     ] : [{ shot, t, shift: 0, opacity: 1 }];
-    if (t >= dissolve) {
-      layers.push({ shot: shots[0], t: 0, shift: 0, opacity: progress(t, dissolve, loopEnd), canvas: true });
-    }
-    return { t, shot, whipping, layers };
+    const fade = progress(t, dissolve, dissolve + .25);
+    return { t, shot, whipping, layers, fade };
   }
 
   const stages = [
@@ -159,6 +158,7 @@ function buildSceneHtml(icons, logo) {
 html, body, main { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 main { position: relative; isolation: isolate; }
 h1, h2, h3, p { margin: 0; }
+h1, h2, h3, .flank { letter-spacing: -.02em; word-spacing: normal; }
 button { font: inherit; }
 svg { display: block; flex: none; }
 em { color: var(--accent); font-style: normal; }
@@ -178,7 +178,7 @@ em { color: var(--accent); font-style: normal; }
 }
 .shot-title {
   position: absolute; top: 65px; left: 0; width: 100%; text-align: center;
-  font-size: 59px; line-height: 1.04; font-weight: 750; letter-spacing: -.065em;
+  font-size: 59px; line-height: 1.04; font-weight: 750;
 }
 .space { position: absolute; perspective: 1400px; transform-style: preserve-3d; }
 .tilt, .mount { position: relative; transform-style: preserve-3d; }
@@ -220,7 +220,7 @@ em { color: var(--accent); font-style: normal; }
 
 .hook-title {
   position: absolute; top: 248px; left: 120px; right: 120px; z-index: 1;
-  font-size: 90px; line-height: 1.03; letter-spacing: -.066em; font-weight: 750; text-align: center;
+  font-size: 90px; line-height: 1.03; font-weight: 750; text-align: center;
   text-shadow: 0 4px 44px #070a12;
 }
 .hook-title > span { display: block; min-height: 1.03em; }
@@ -239,11 +239,13 @@ em { color: var(--accent); font-style: normal; }
 .ghost-lines i:nth-child(3) { width: 56%; }
 
 .new-application .surface { padding: 17px; border-radius: 29px; }
-.new-application .button { width: 100%; font-size: 32px; padding: 23px 20px; letter-spacing: -.035em; }
+.new-application .button { width: 100%; font-size: 32px; padding: 23px 20px; letter-spacing: -.02em; }
 .new-application .icon { width: 28px; height: 28px; }
 .quick .surface { padding: 23px; }
+/* Keep the tilt pivot fixed while the card grows. */
+.quick .tilt { height: 402px; }
 .quick-head { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
-.quick-head h2 { font-size: 28px; letter-spacing: -.045em; }
+.quick-head h2 { font-size: 28px; }
 .quick-head .app-icon { background: #eee8ff; color: #5536a6; }
 .app-icon {
   width: 40px; height: 40px; display: grid; place-items: center; flex: none;
@@ -254,6 +256,7 @@ em { color: var(--accent); font-style: normal; }
   border: 1px solid #b4c0d8; border-radius: 12px; background: #f0f4fb; color: #263654;
   font: 550 13px ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: nowrap;
 }
+.quick-details { display: flow-root; overflow-y: clip; }
 .quick-result { position: relative; margin-top: 16px; height: 172px; padding: 11px 12px; background: #edf1f684; border-radius: 12px; }
 .quick-result p { font-size: 13px; color: var(--muted); font-weight: 680; margin-bottom: 10px; }
 .quick-fields { display: flex; flex-wrap: wrap; align-content: start; gap: 8px; }
@@ -266,7 +269,7 @@ em { color: var(--accent); font-style: normal; }
 .quick-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; height: 42px; }
 .quick-foot .button { min-width: 168px; }
 .quick-foot > span { color: var(--muted); font-weight: 670; font-size: 14px; }
-.flank { position: absolute; top: 315px; width: 295px; font-size: 48px; font-weight: 750; letter-spacing: -.065em; line-height: 1.03; }
+.flank { position: absolute; top: 315px; width: 295px; font-size: 48px; font-weight: 750; line-height: 1.03; }
 .flank.left { right: 942px; text-align: right; }
 .flank.right { left: 941px; }
 
@@ -288,7 +291,7 @@ em { color: var(--accent); font-style: normal; }
 .sidebar-count::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #1baf7a; }
 .window-content { padding: 19px 22px; }
 .pane-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.pane-header h2 { font-size: 32px; letter-spacing: -.048em; }
+.pane-header h2 { font-size: 32px; }
 .filters { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; }
 .filters .button, .pane-header .button { font-size: 12px; padding: 6px 11px; }
 .column-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
@@ -302,8 +305,8 @@ em { color: var(--accent); font-style: normal; }
 .mini-card span { font-size: 10px; color: var(--muted); }
 
 .lanes { position: absolute; left: 258px; right: 258px; top: 204px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-.lane { min-height: 313px; padding: 17px 22px; border-radius: 27px; border: 1.5px dashed #aab8cf; background: #ffffff8c; color: var(--stage-ink); }
-.lane > b { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; }
+.lane { position: relative; min-height: 313px; border-radius: 27px; border: 1.5px dashed #aab8cf; background: #ffffff8c; color: var(--stage-ink); }
+.lane > b { position: absolute; top: -30px; left: 22px; display: inline-flex; align-items: center; gap: 8px; font-size: 16px; }
 .lane > b::before { content: ""; width: 8px; height: 8px; background: var(--stage-color); border-radius: 50%; }
 .lane:last-child { background: #fff3dd80; border-color: #d9b77d; }
 .drag-card .surface {
@@ -311,7 +314,7 @@ em { color: var(--accent); font-style: normal; }
   box-shadow: 0 calc(30px + 22px * var(--lift, 0)) calc(63px + 28px * var(--lift, 0)) -25px #080e246b, 0 0 0 1px #0f172a16;
 }
 .drag-card [data-anchor] { position: relative; min-height: 166px; }
-.drag-card h2 { margin: 12px 0 1px; font-size: 29px; letter-spacing: -.04em; }
+.drag-card h2 { margin: 12px 0 1px; font-size: 29px; }
 .drag-card p { color: var(--muted); font-size: 14px; }
 .drag-card .tags { display: flex; gap: 5px; margin-top: 12px; }
 .drag-card .status { float: right; position: relative; width: 95px; height: 28px; }
@@ -321,17 +324,18 @@ em { color: var(--accent); font-style: normal; }
 .python-filter { position: absolute; left: 0; right: 0; top: 551px; display: flex; justify-content: center; align-items: center; gap: 8px; }
 .python-filter .button { min-width: 118px; }
 .python-results { position: absolute; inset: 49px 0 auto; display: flex; justify-content: center; align-items: center; gap: 7px; }
+.python-results strong { font-size: 13px; color: var(--muted); }
 .python-results .chip { background: #fff; border: 1px solid #d4dbe8; }
 
 .prep-pill .surface { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px 15px 22px; border-radius: 999px; }
-.prep-pill h2 { flex: 1; font-size: 23px; letter-spacing: -.035em; }
+.prep-pill h2 { flex: 1; font-size: 23px; }
 .prep-pill .app-icon { margin-right: 14px; background: #eef2f8; color: #33496c; border-radius: 50%; }
 .prep-pill .badge { width: 40px; height: 40px; }
 .ring-orbit { width: 336px; height: 336px; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle, #10251f, #101b22 55%, #09141d 68%); border: 1px solid #1baf7a2e; box-shadow: 0 0 95px -28px #1baf7a76, inset 0 0 32px #1baf7a19; }
 .ring-orbit > svg { position: absolute; inset: 14px; width: 306px; height: 306px; filter: drop-shadow(0 0 8px #1baf7aab); }
 .score { position: relative; text-align: center; color: #fff; font-variant-numeric: tabular-nums; }
-.score b { font-size: 87px; font-weight: 760; letter-spacing: -.074em; }
-.score span { color: #b9cbcb; margin-left: 6px; font-size: 24px; font-weight: 650; }
+.score b { font-size: 87px; font-weight: 760; letter-spacing: -.02em; }
+.score span { color: #b9cbcb; font-size: 24px; font-weight: 650; }
 .score p { margin-top: 4px; font-size: 19px; font-weight: 640; color: #baf2dc; }
 .score .check-svg { color: #1baf7a; width: 31px; height: 31px; margin: 10px auto 0; }
 
@@ -344,9 +348,9 @@ em { color: var(--accent); font-style: normal; }
 .opening-top { display: flex; align-items: center; gap: 15px; }
 .opening-top .app-icon { width: 51px; height: 51px; border-radius: 15px; }
 .opening-top .icon { width: 23px; height: 23px; }
-.opening-top h2 { font-size: 34px; letter-spacing: -.05em; }
+.opening-top h2 { font-size: 34px; }
 .opening-top .button { margin-left: auto; min-width: 106px; font-size: 17px; }
-.opening-card h3 { margin: 25px 0 12px; font-size: 27px; letter-spacing: -.04em; }
+.opening-card h3 { margin: 25px 0 12px; font-size: 27px; }
 .opening-meta { display: flex; align-items: center; gap: 8px; }
 .opening-meta .chip { font-size: 15px; }
 .opening-meta .icon { width: 16px; height: 16px; }
@@ -362,9 +366,9 @@ em { color: var(--accent); font-style: normal; }
 
 .radar .surface { padding: 24px; }
 .radar-head { position: relative; display: flex; align-items: center; gap: 12px; height: 42px; margin-bottom: 18px; z-index: 1; }
-.radar-head h2 { font-size: 30px; letter-spacing: -.05em; }
+.radar-head h2 { font-size: 30px; }
 .radar-head > .button, .radar-head > .chip { margin-left: auto; }
-.export-menu { position: absolute; right: 0; top: 50px; background: #fff; padding: 6px; border: 1px solid #d3dbe8; border-radius: 12px; box-shadow: 0 12px 24px #0f172a30; }
+.export-menu { position: absolute; right: 0; bottom: calc(100% + 10px); background: #fff; padding: 6px; border: 1px solid #d3dbe8; border-radius: 12px; box-shadow: 0 12px 24px #0f172a30; }
 .export-menu .button { border-radius: 8px; background: #f0f4fb; }
 .radar-event { display: grid; grid-template-columns: 65px 1fr; gap: 14px; align-items: center; padding: 14px 16px; background: #edf1f6; border-radius: 13px; }
 .radar-event + .radar-event { margin-top: 9px; }
@@ -375,14 +379,14 @@ em { color: var(--accent); font-style: normal; }
 .radar-event p { color: var(--muted); font-size: 13px; }
 .confirm-card .surface { display: flex; align-items: center; gap: 17px; padding: 16px 25px 16px 17px; border-radius: 999px; }
 .confirm-card .check-svg { width: 53px; height: 53px; color: #1baf7a; filter: drop-shadow(0 0 7px #1baf7a79); }
-.confirm-card h2 { font-size: 23px; letter-spacing: -.032em; }
+.confirm-card h2 { font-size: 23px; }
 
 .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 12px; }
 .kpi, .chart { background: #fff; border: 1px solid var(--paper-line); border-radius: 12px; padding: 12px; }
 .kpi p { color: var(--muted); font-size: 12px; font-weight: 680; }
-.kpi b { display: block; margin-top: 5px; font-size: 26px; letter-spacing: -.045em; }
+.kpi b { display: block; margin-top: 5px; font-size: 26px; letter-spacing: -.02em; }
 .insight-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 9px; }
-.chart h3 { font-size: 16px; margin-bottom: 13px; letter-spacing: -.028em; }
+.chart h3 { font-size: 16px; margin-bottom: 13px; }
 .chart-row { display: grid; grid-template-columns: 54px minmax(0, 1fr) 62px; gap: 7px; align-items: center; margin-top: 10px; font-size: 11px; }
 .chart-row b { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .chart-row small { color: var(--muted); font-size: inherit; font-weight: 500; }
@@ -390,10 +394,10 @@ em { color: var(--accent); font-style: normal; }
 .chart-track i { display: block; width: 100%; height: 100%; background: var(--bar); border-radius: inherit; transform-origin: left; }
 .skills .chart-row { grid-template-columns: 59px minmax(0, 1fr) 15px; }
 
-.outro h1 { position: absolute; left: 0; right: 0; top: 242px; text-align: center; font-size: 112px; letter-spacing: -.072em; font-weight: 760; }
+.outro h1 { position: absolute; left: 0; right: 0; top: 242px; text-align: center; font-size: 112px; font-weight: 760; }
 .lockup { position: absolute; inset: 288px 0 auto; display: grid; justify-items: center; }
 .lockup .logo svg { width: 92px; height: 92px; filter: drop-shadow(0 14px 18px #152a4a36); }
-.lockup h2 { margin: 10px 0 20px; font-size: 42px; letter-spacing: -.055em; }
+.lockup h2 { margin: 10px 0 20px; font-size: 42px; }
 .domain { color: #fff; background: #0f172a; border: 1px solid #44506d; padding: 12px 25px; border-radius: 999px; font-size: 18px; font-weight: 670; box-shadow: 0 5px 34px #2563eb44, 0 7px 35px #d94e2837; }
 
 .cursor, .ripple { position: absolute; top: 0; left: 0; pointer-events: none; }
@@ -414,6 +418,7 @@ function installScene(timeline, icons, logo) {
   const { actions, at, clicks, notebook, openings, out, progress, readiness, spring, stages, stripe, term } = timeline;
   const root = document.querySelector("main");
   const quickUrl = "https://boards.greenhouse.io/stripe/jobs/98765";
+  const scoreDenominator = "&thinsp;/&thinsp;100";
   const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
   const brand = (text = "") => `<span class="logo">${logo}${text}</span>`;
   const title = (lead, accent) => `<h1 class="shot-title">${lead ? lead + " " : ""}<em>${accent}</em></h1>`;
@@ -444,20 +449,24 @@ function installScene(timeline, icons, logo) {
   }
 
   function hook(t) {
+    const lead = "Still tracking ";
     const word = "internships";
     const suffix = "in a spreadsheet?";
-    const count = Math.floor(progress(t, 0.025, 1.43, x => x) * (word.length + suffix.length));
-    const tail = count < word.length ? "" : suffix.slice(0, count - word.length);
-    const caret = `<i class="typing-caret" style="opacity:${Math.floor(t / .26) % 2 ? 0 : 1}" aria-hidden="true"></i>`;
+    const count = Math.floor(progress(t, .025, .74, x => x) * (lead.length + word.length));
+    const tail = suffix.slice(0, Math.floor(progress(t, .74, 1.48, x => x) * suffix.length));
+    const caret = `<i class="typing-caret" style="opacity:${Math.floor(t / .26) % 2 ? .5 : 1}" aria-hidden="true"></i>`;
+    const backdrop = progress(t, .08, .47);
     const ghosts = [
       [{ x: 96, y: 116, w: 302, rx: 9, ry: -12, sway: 1.45 }, 3.4, .75, '<h2>Internship tracker</h2><div class="ghost-grid"></div>'],
       [{ x: 920, y: 98, w: 242, rx: -6, ry: 12, sway: .68 }, 5.7, .59, '<h2>Software Intern</h2><p>Application</p><div class="ghost-lines"><i></i><i></i><i></i></div>'],
       [{ x: 842, y: 492, w: 296, rx: 8, ry: -10, sway: 1.22 }, 3, .69, '<h2>Product Engineering</h2><p>Interview</p><div class="ghost-lines"><i></i><i></i><i></i></div>'],
       [{ x: 154, y: 493, w: 196, rx: -10, ry: 10, sway: .82 }, 6.8, .45, '<h2>Applications</h2><div class="ghost-grid"></div>']
     ];
-    return ghosts.map(([pose, blur, alpha, content], i) => `<div class="ghost-layer" style="filter:blur(${blur}px)" aria-hidden="true">${rig(`ghost ghost-${i}`, t, { ...pose, alpha }, content)}</div>`).join("") +
-      `<h1 class="hook-title"><span>Still tracking <em>${word.slice(0, count)}</em>${count < word.length ? caret : ""}</span>
-        <span>${tail}${count >= word.length ? caret : ""}</span></h1>`;
+    const parallax = backdrop ? ghosts.map(([pose, blur, alpha, content], i) =>
+      `<div class="ghost-layer" style="filter:blur(${blur}px);opacity:${backdrop}" aria-hidden="true">${rig(`ghost ghost-${i}`, t, { ...pose, alpha }, content)}</div>`
+    ).join("") : "";
+    return parallax + `<h1 class="hook-title"><span>${lead.slice(0, count)}<em>${word.slice(0, Math.max(0, count - lead.length))}</em>${tail ? "" : caret}</span>
+        <span>${tail ? tail + caret : ""}</span></h1>`;
   }
 
   function quick(t, age) {
@@ -470,10 +479,10 @@ function installScene(timeline, icons, logo) {
     const typed = quickUrl.slice(0, Math.floor(quickUrl.length * progress(t, actions.paste, actions.paste + .26, x => x)));
     const bar = `<header class="quick-head"><span class="app-icon">${icon("link")}</span><h2>Quick Fill</h2></header>
       <div class="link-bar">${icon("link")}<span>${typed || "Paste a job link"}${t >= actions.paste && t < actions.scan ? '<i class="typing-caret"></i>' : ""}</span></div>`;
-    const paste = `<p class="flank left" style="${fadeUp(progress(t, open + .09, open + .48, out))}">Paste <em>any link.</em></p>`;
-    const barExit = progress(t, actions.scan, actions.scan + .18);
-    const barCard = barExit < 1 ? rig("quick quick-bar", age, { x: 374, y: 229, w: 532, rx: 7, ry: -9, age: t - open, alpha: 1 - barExit }, bar) : "";
-    if (t < actions.scan) return head + barCard + paste;
+    const paste = `<p class="flank left" style="${fadeUp(progress(t, open + .09, open + .48, out))}">Paste<br><em>any link.</em></p>`;
+    const scanAge = t - actions.scan;
+    const expansion = 248 * spring(scanAge * .55);
+    const reveal = progress(scanAge, .1, .23);
     const scan = progress(t, actions.scan, 4.26, out);
     const beam = progress(t, actions.scan, 4.18);
     const locked = progress(t, 4.12, 4.42);
@@ -486,17 +495,19 @@ function installScene(timeline, icons, logo) {
     ).join("");
     const saved = t >= actions.saveStripe;
     const filled = `<p class="flank right" style="${fadeUp(progress(t, 3.71, 4.16, out))}">Every field<br><em>filled.</em></p>`;
-    const card = bar + `<div class="quick-result">
+    const card = bar + `<div class="quick-details" style="height:${expansion}px">
+      <div class="quick-result" style="opacity:${reveal}">
         <p>Instant link parsing</p><div class="quick-fields">${badges}</div>
         <svg class="reticle" viewBox="0 0 480 172" preserveAspectRatio="none" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="opacity:${scan * (1 - .8 * locked)}" aria-hidden="true">
           <path d="M2 25V2h25 M453 2h25v23 M478 147v23h-25 M27 170H2v-23"/>
         </svg>
         <i class="scan-beam" style="top:${8 + 83 * beam}%;opacity:${Math.sin(Math.PI * beam) * .64}" aria-hidden="true"></i>
       </div>
-      <footer class="quick-foot"><span>${notebook(t).active.length} active applications</span>
+      <footer class="quick-foot" style="opacity:${progress(scanAge, .38, .55)}"><span>${notebook(t).active.length} active applications</span>
         ${t >= 4.17 ? button(saved ? icon("check") + "Saved" : "Save to notebook", "save-stripe", (saved ? "done " : "primary ") + pressed(t, actions.saveStripe)) : ""}
-      </footer>`;
-    return head + barCard + rig("quick", age, { x: 374, y: 196, w: 532, rx: 7, ry: -9, age: t - actions.scan }, card) + paste + filled;
+      </footer>
+    </div>`;
+    return head + rig("quick", age, { x: 374, y: 211, w: 532, rx: 7, ry: -9, age: t - open }, card) + paste + filled;
   }
 
   function appWindow(t, age, tab, content, flip = 1) {
@@ -531,8 +542,7 @@ function installScene(timeline, icons, logo) {
     const stamp = spring(t - actions.drop - .09);
     const { active, columns, python } = notebook(t);
     const filtered = t >= actions.python;
-    const visible = filtered ? columns.map(apps => apps.filter(app => python.includes(app))) : columns;
-    const lanes = [1, 2].map(i => `<div class="lane" style="${stageStyle(stages[i])}"><b>${stages[i].label} · ${visible[i].length}</b></div>`).join("");
+    const lanes = [1, 2].map(i => `<div class="lane" style="${stageStyle(stages[i])}"><b>${stages[i].label} · ${columns[i].length}</b></div>`).join("");
     const card = `<div data-anchor="stripe">${hitpoint}
       <span class="status">${[1, 2].map(i => `<span class="chip" style="${stageStyle(stages[i])};opacity:${i === 1 ? 1 - stage : stage}">${stages[i].label}</span>`).join("")}</span>
       <span class="app-icon" style="background:#eeeafd;color:#5546ab">S</span><h2>${stripe.company}</h2><p>${stripe.role}</p>
@@ -542,7 +552,7 @@ function installScene(timeline, icons, logo) {
     return title("Pipeline", "Board") + `<div class="lanes">${lanes}</div>` +
       rig("drag-card", age, { x: 284 + 402 * travel, y: 264 - 48 * lift, w: 310, rx: 6 + 5 * lift, ry: -7 + 14 * travel, scale: 1 + .064 * lift, sway: .42, lift }, card) +
       `<div class="python-filter">${chip(`All (${active.length})`)}${button(`Python (${python.length})`, "python", (filtered ? "active " : "") + pressed(t, actions.python))}
-        ${filtered ? `<div class="python-results" style="${fadeUp(spring(t - actions.python), 11)}">
+        ${filtered ? `<div class="python-results" style="${fadeUp(spring(t - actions.python), 11)}"><strong>Python matches</strong>
           ${python.map(app => chip(app.company + " · " + stages[app.stage].label)).join("")}
         </div>` : ""}</div>`;
   }
@@ -567,7 +577,7 @@ function installScene(timeline, icons, logo) {
         <svg viewBox="0 0 306 306" fill="none" stroke-width="9" stroke-linecap="round" aria-hidden="true">
           <circle cx="153" cy="153" r="140" stroke="#254c40"/><circle cx="153" cy="153" r="140" stroke="#1baf7a" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${1 - readiness / 100 * p}" transform="rotate(-90 153 153)"/>
         </svg>
-        <div class="score"><b>${Math.round(readiness * p)}</b><span>/ 100</span><p>Readiness</p>${check(tick)}</div>
+        <div class="score"><b>${Math.round(readiness * p)}</b><span>${scoreDenominator}</span><p>Readiness</p>${check(tick)}</div>
       </div>`;
   }
 
@@ -599,7 +609,7 @@ function installScene(timeline, icons, logo) {
     const downloaded = t >= actions.download + .12;
     const content = `<header class="radar-head"><span class="app-icon">${icon("calendar")}</span><h2>Deadline Radar</h2>
         ${downloaded ? chip(icon("check") + "Downloaded") : button(icon("download") + "Export", "export", pressed(t, actions.export))}
-        ${menu ? `<div class="export-menu" style="${fadeUp(progress(t, actions.export + .09, actions.export + .27, out), -7)}">
+        ${menu ? `<div class="export-menu" style="${fadeUp(progress(t, actions.export + .09, actions.export + .27), 7)}">
           ${button("Download calendar (.ics)", "download", pressed(t, actions.download))}
         </div>` : ""}
       </header>
@@ -624,7 +634,7 @@ function installScene(timeline, icons, logo) {
       ${funnel.map((n, i) => row(stages[i].label, n, active.length, `${n} <small>(${percent(n, active.length)}%)</small>`, .19 + i * .12, stages[i].color)).join("")}
       </section><section class="chart skills"><h3>Top interview skills</h3>
       ${skills.map(([skill, n], i) => row(skill, n, skills[0][1], n, .41 + i * .12, "#2563eb")).join("")}</section></div>`;
-    const metrics = [["Active applications", active.length], ["Response rate", percent(funnel[2], funnel[1]) + "%"], ["Mock readiness", readiness + " / 100"]];
+    const metrics = [["Active applications", active.length], ["Response rate", percent(funnel[2], funnel[1]) + "%"], ["Mock readiness", readiness + scoreDenominator]];
     const content = `<header class="pane-header"><h2>Search insights</h2></header>
       <div class="kpis">${metrics.map(([label, value]) => `<div class="kpi"><p>${label}</p><b>${value}</b></div>`).join("")}</div>` + charts;
     return title("", "Insights") + appWindow(t, age, "Insights", content, -1);
@@ -701,9 +711,9 @@ function installScene(timeline, icons, logo) {
       const effect = !frame.whipping ? "" : `transform:translateX(${shift}px);filter:blur(${Math.min(9, Math.abs(shift) / 9)}px);`;
       return `<section class="shot" data-shot="${shot.id}" style="${effect}${opacity === 1 ? "" : `opacity:${opacity}`}">${render[shot.id](t, t - shot.start)}</section>`;
     };
-    const dissolve = frame.layers.find(layer => layer.canvas);
-    root.innerHTML = `<div class="canvas ${mode(frame.shot)}">${frame.layers.filter(layer => !layer.canvas).map(layerHtml).join("")}</div>` +
-      (dissolve ? `<div class="canvas ${mode(dissolve.shot)}" style="opacity:${dissolve.opacity}">${layerHtml({ ...dissolve, opacity: 1 })}</div>` : "");
+    const content = frame.fade < 1 ? frame.layers.map(layerHtml).join("") : "";
+    root.innerHTML = `<div class="canvas ${mode(frame.shot)}">${content}</div>` +
+      (frame.fade ? `<div class="canvas dark" style="opacity:${frame.fade}" aria-hidden="true"></div>` : "");
     const cursor = paintCursor(frame.t, frame.shot.id);
     return { frame, cursor };
   }
@@ -769,7 +779,7 @@ function runEncoder(bin, args, label) {
 
 function encodeWebm(ffmpegBin, framesPath, outPath) {
   const passLog = path.join(path.dirname(framesPath), "vpx_2pass");
-  for (const kbps of BITRATES) {
+  for (const kbps of WEBM_BITRATES) {
     const args = [
       "-hide_banner", "-loglevel", "error", "-y",
       "-f", "image2pipe", "-vcodec", "mjpeg", "-r", String(FPS), "-i", framesPath,
@@ -1022,7 +1032,7 @@ do {
   fs.writeFileSync(swiftScript, swiftSource);
   fs.writeFileSync(offsetsPath, JSON.stringify(offsets));
 
-  for (const kbps of BITRATES) {
+  for (const kbps of MP4_BITRATES) {
     fs.rmSync(outPath, { force: true });
     runEncoder("/usr/bin/swift", [swiftScript, framesPath, offsetsPath, outPath, String(kbps * 1000)], "MP4 encoding");
     const size = fs.statSync(outPath).size;
