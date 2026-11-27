@@ -139,6 +139,13 @@ function createTimeline(chapters, loopEnd) {
 }
 
 function buildSceneHtml(icons, logo) {
+  const grain = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192">
+    <filter id="grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency=".18" numOctaves="2" seed="17" stitchTiles="stitch"/>
+      <feColorMatrix values="3 0 0 0 -1  3 0 0 0 -1  3 0 0 0 -1  0 0 0 0 1"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#grain)"/>
+  </svg>`);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -163,6 +170,14 @@ button { font: inherit; }
 svg { display: block; flex: none; }
 em { color: var(--accent); font-style: normal; }
 .canvas, .shot { position: absolute; inset: 0; }
+.canvas { isolation: isolate; }
+.canvas::before, .canvas::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: url("data:image/svg+xml,${grain}");
+}
+/* The luma layer preserves dither where overlay has little effect near black or white. */
+.canvas::before { opacity: .02; }
+.canvas::after { opacity: .025; mix-blend-mode: overlay; }
 .canvas.dark {
   --accent: #d94e28;
   color: #fff;
@@ -784,7 +799,8 @@ function encodeWebm(ffmpegBin, framesPath, outPath) {
       "-hide_banner", "-loglevel", "error", "-y",
       "-f", "image2pipe", "-vcodec", "mjpeg", "-r", String(FPS), "-i", framesPath,
       "-vf", `scale=${OUT_WIDTH}:${OUT_HEIGHT}:flags=lanczos`,
-      "-c:v", "libvpx", "-b:v", `${kbps}k`,
+      "-c:v", "libvpx", "-b:v", `${kbps}k`, "-crf", "24", "-qmin", "4", "-qmax", "40",
+      "-max-intra-rate", "0", "-static-thresh", "0", "-arnr-strength", "0",
       "-force_key_frames", String(LOOP_REST_START),
       "-g", String(FPS), "-pix_fmt", "yuv420p",
       "-deadline", "good", "-cpu-used", "2", "-auto-alt-ref", "1", "-lag-in-frames", "25",
@@ -988,6 +1004,10 @@ func encode() async throws {
     kVTCompressionPropertyKey_AllowFrameReordering as String: false,
     kVTCompressionPropertyKey_MaxFrameDelayCount as String: 8
   ]
+  let qualityStatus = VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: Float32(0.8) as CFNumber)
+  if qualityStatus != kVTPropertyNotSupportedErr && qualityStatus != kVTPropertyReadOnlyErr {
+    try checkVT(qualityStatus, "Setting H.264 quality")
+  }
   try checkVT(VTSessionSetProperties(session, propertyDictionary: properties as CFDictionary), "Configuring H.264 session")
   try checkVT(VTCompressionSessionPrepareToEncodeFrames(session), "Preparing H.264 session")
   guard let pool = VTCompressionSessionGetPixelBufferPool(session) else {
