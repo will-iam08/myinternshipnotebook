@@ -12,22 +12,39 @@ const STYLES_PATH = path.join(PUBLIC_DIR, "styles.css");
 
 const VIEWPORT_WIDTH = 1280;
 const VIEWPORT_HEIGHT = 720;
-const DEVICE_SCALE_FACTOR = 1.5; // 1920x1080 supersampled source capture
-const OUT_WIDTH = 1280;
-const OUT_HEIGHT = 720;
+const WINDOW_WIDTH = 1152;
+const WINDOW_HEIGHT = 648;
+const FRAME_MARGIN = 12;
+const FOCUS_MARGIN = 24;
+const ZOOM_COVER_THRESHOLD = 1.12;
+const DEVICE_SCALE_FACTOR = 2;
+const OUT_WIDTH = 1920;
+const OUT_HEIGHT = 1080;
 const FPS = 60;
-const DURATION_SEC = 20.8;
-const TOTAL_FRAMES = Math.round(FPS * DURATION_SEC); // 1248 frames
-const MIN_VIDEO_BYTES = 400 * 1024;
-const MAX_VIDEO_BYTES = 1450 * 1024;
+const DURATION_SEC = 30;
+const LOOP_REST_START = DURATION_SEC - 1;
+const TOTAL_FRAMES = FPS * DURATION_SEC;
+const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
+const MAX_POSTER_BYTES = 200 * 1024;
+const BITRATES = [1400, 1250, 1100];
+const POSTER_TIME = 3.4;
+const BOARD_CARD_GAP = 6;
+const SIDEBAR_BOTTOM_PADDING = 16;
+const CHAPTERS = { clipper: 0, board: 5, prep: 10, openings: 15, calendar: 20, insights: 25 };
+const ACTIONS = {
+  newPage: 0.62, focusLink: 1.08, pasteLink: 1.62, fill: 2.42, saveStripe: 3.9,
+  grabStripe: 5.95, dropStripe: 7, filterPython: 8.55, openStripe: CHAPTERS.prep,
+  markPracticed: 12.45,
+  filterTerm: 16.3, saveOpening: 18.3,
+  openExport: 21.7, downloadCalendar: 22.85,
+  dissolve: LOOP_REST_START - 0.4
+};
 
 function findFfmpeg() {
-  const candidates = [
-    process.env.FFMPEG_BIN,
-    "/Users/will/Library/Caches/ms-playwright/ffmpeg-1011/ffmpeg-mac"
-  ].filter(Boolean);
+  const candidates = [process.env.FFMPEG_BIN];
 
-  const cacheDir = path.join(os.homedir(), "Library/Caches/ms-playwright");
+  const cacheDir = process.env.PLAYWRIGHT_BROWSERS_PATH ||
+    path.join(os.homedir(), process.platform === "darwin" ? "Library/Caches/ms-playwright" : ".cache/ms-playwright");
   if (fs.existsSync(cacheDir)) {
     for (const entry of fs.readdirSync(cacheDir)) {
       if (entry.startsWith("ffmpeg-")) {
@@ -68,6 +85,7 @@ html, body {
   width: 1280px;
   height: 720px;
   overflow: hidden;
+  isolation: isolate;
   background:
     radial-gradient(64% 58% at 50% 42%, rgba(200, 67, 25, 0.14), transparent 70%),
     radial-gradient(56% 52% at 20% 18%, rgba(59, 130, 246, 0.14), transparent 65%),
@@ -95,11 +113,12 @@ html, body {
 }
 
 .demo-window {
+  --demo-border: #c4cbd2;
   position: absolute;
-  left: 72px;
-  top: 42px;
-  width: 1136px;
-  height: 636px;
+  left: ${(VIEWPORT_WIDTH - WINDOW_WIDTH) / 2}px;
+  top: ${(VIEWPORT_HEIGHT - WINDOW_HEIGHT) / 2}px;
+  width: ${WINDOW_WIDTH}px;
+  height: ${WINDOW_HEIGHT}px;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -112,8 +131,8 @@ html, body {
 }
 
 .app.demo-app {
-  width: 1136px;
-  height: 636px;
+  width: 100%;
+  height: 100%;
   max-width: none;
   border-radius: 0;
   box-shadow: none;
@@ -121,7 +140,7 @@ html, body {
 }
 
 .demo-app .cover {
-  padding: 16px 14px 16px;
+  padding: 16px 14px ${SIDEBAR_BOTTOM_PADDING}px;
 }
 
 .demo-traffic-lights {
@@ -145,16 +164,18 @@ html, body {
   margin-bottom: 14px;
 }
 
+.demo-app .cover kbd { opacity: 1; border-bottom-width: 1px; }
+
 .demo-app .page-wrap {
   position: relative;
   min-width: 0;
-  height: 636px;
+  height: 100%;
   overflow: hidden;
 }
 
 .demo-app .page {
   position: relative;
-  height: 636px;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -179,6 +200,72 @@ html, body {
   font-size: 1.92rem;
 }
 
+.demo-app .board {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  overflow: hidden;
+}
+
+.demo-app .board .column { min-width: 0; padding: 8px 7px; }
+.demo-board-view .column-cards { position: relative; gap: ${BOARD_CARD_GAP}px; }
+.demo-board-view .app-card { min-width: 0; gap: 3px; padding: 7px 6px 7px 9px; }
+.demo-board-view .app-role { font-size: 0.93rem; }
+.demo-board-view .app-card .chips { gap: 3px; }
+.demo-board-view .app-card .chip { font-size: 0.62rem; padding: 2px 4px; }
+.demo-board-view .drag-origin { opacity: 0.5; }
+.demo-board-view .demo-history-stamp { font-size: 0.64rem; }
+.demo-board-view :is(.view-head, .board) { max-width: 646px; }
+.demo-app .strip-top { max-width: 605px; }
+.demo-app .goal-card .card-title { width: max-content; }
+.demo-app .goal-card .card-note { max-width: 144px; }
+.demo-app .agenda-kind { width: 38px; white-space: nowrap; }
+
+.demo-window :is(.card, .app-card, .column, .sheet-page, .prep-group, .demo-mock-card,
+  .demo-modal-card, .demo-field-box, .demo-quickfill-display, .button:not(.primary),
+  .filter-chip, .prep-mark[aria-pressed="false"]) {
+  border: 1px solid var(--demo-border);
+}
+
+.demo-stage *, .demo-stage *::before, .demo-stage *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+.demo-opening-row {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr) 105px 88px 64px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.demo-opening-row + .demo-opening-row { border-top: 1px solid var(--demo-border); }
+.demo-opening-row .button { min-height: 36px; }
+.demo-app :is(.demo-openings-view, .demo-calendar-view) .view-head,
+.demo-openings-feed { max-width: 646px; }
+.demo-openings-list { padding: 4px 8px; }
+.demo-export { position: relative; z-index: 8; }
+.demo-export-menu { position: absolute; right: 0; top: calc(100% + 8px); width: max-content; padding: 6px; }
+.demo-export-menu .button { background: var(--paper-2); }
+.demo-prep-page { width: 624px; margin: 18px 28px 18px 42px; }
+.demo-prep-page .prep-mark { min-width: 116px; justify-content: center; }
+.demo-prep-page .entry-head { margin-bottom: 10px; }
+.demo-prep-page .stepper { margin-bottom: 12px; }
+.demo-prep-page .prep-q { padding: 5px 0; }
+.demo-prep-page .prep-mark { min-height: 36px; }
+.demo-prep-page .entry-fields { margin-bottom: 12px; }
+.demo-prep-page :is(.entry-head, .stepper, .entry-fields, .prep-head, .prep-progress),
+.demo-prep-page.prep-detail .prep-q:not([data-focus]) {
+  opacity: var(--prep-context-opacity);
+  visibility: var(--prep-context-visibility);
+}
+.demo-window .ring { width: 96px; height: 96px; }
+.demo-app .demo-insights-view { max-width: 746px; margin-left: 0; }
+.demo-window :is(.funnel-row, .skill-bar) { min-height: 34px; }
+.demo-insights-view .funnel-row { grid-template-columns: 86px minmax(0, 1fr) 72px; }
+.demo-insights-view .funnel-value { justify-self: end; }
+.demo-insights-view :is(.funnel-bar, .skill-bar i) { min-width: 0; }
+
 /* Hover and focus simulation classes */
 .is-hovered {
   border-color: var(--accent-ink) !important;
@@ -191,6 +278,7 @@ html, body {
 }
 .button.primary.is-hovered {
   background: var(--primary-hover) !important;
+  color: #fff;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent), 0 8px 18px -6px rgba(179, 56, 18, 0.45) !important;
 }
 .demo-autofill-flash {
@@ -212,7 +300,7 @@ html, body {
   pointer-events: none;
 }
 .demo-modal-card {
-  width: 540px;
+  width: 644px;
   background: var(--card);
   border: 1px solid var(--line-strong);
   border-radius: 16px;
@@ -282,6 +370,8 @@ html, body {
 
 /* Kanban drag ghost, drop slot, and stamp */
 .demo-drop-slot {
+  position: absolute;
+  inset: 0 0 auto;
   border: 2px dashed var(--st-interview);
   background: color-mix(in srgb, var(--st-interview-bg) 55%, transparent);
   border-radius: 12px;
@@ -435,11 +525,11 @@ html, body {
           </div>
           <nav class="tabs" aria-label="Sections">
             <a class="tab" id="nav-today" data-anchor="nav-today" style="--tab: var(--tab-today)"><span>Today</span></a>
-            <a class="tab" id="nav-board" data-anchor="nav-board" style="--tab: var(--tab-board)"><span>Board</span><b class="tab-count" id="nav-board-count">10</b></a>
-            <a class="tab" id="nav-notebook" style="--tab: var(--tab-notebook)"><span>All pages</span><b class="tab-count">13</b></a>
+            <a class="tab" id="nav-board" data-anchor="nav-board" style="--tab: var(--tab-board)"><span>Board</span><b class="tab-count" id="nav-board-count"></b></a>
+            <a class="tab" id="nav-notebook" style="--tab: var(--tab-notebook)"><span>All pages</span><b class="tab-count" id="nav-page-count"></b></a>
             <a class="tab" id="nav-insights" data-anchor="nav-insights" style="--tab: var(--tab-insights)"><span>Insights</span></a>
           </nav>
-          <div class="cover-footer">
+          <div class="cover-footer" id="demo-sidebar-footer">
             <p class="storage-chip">Private to this browser</p>
           </div>
         </aside>
@@ -498,6 +588,12 @@ html, body {
 
   const seg = (t, t0, t1, fn = cubicInOut) => fn(clamp((t - t0) / (t1 - t0), 0, 1));
   const QUICK_URL = "https://boards.greenhouse.io/stripe/jobs/98765";
+  const CHAPTER = ${JSON.stringify(CHAPTERS)};
+  const AT = ${JSON.stringify(ACTIONS)};
+  const LOOP_END = ${LOOP_REST_START};
+  const VIEW_W = ${VIEWPORT_WIDTH}, VIEW_H = ${VIEWPORT_HEIGHT};
+  const WIN_W = ${WINDOW_WIDTH}, WIN_H = ${WINDOW_HEIGHT}, MARGIN = ${FRAME_MARGIN};
+  const STAGES = ["SAVED", "APPLIED", "INTERVIEW", "OFFER"];
 
   // Contextual macOS cursors (Arrow, Text I-Beam, Open Grab Hand, Closed Grabbing Hand)
   const CURSORS = {
@@ -519,320 +615,389 @@ html, body {
     }
   };
 
-  function renderTodayView(t, { highlightRadar = false, countOverride = null } = {}) {
-    const savedStripe = countOverride !== null ? countOverride : t >= 4.05;
-    const activeCount = savedStripe ? 11 : 10;
-    const appliedGrow = savedStripe ? 4 : 3;
-    const radarPulse = highlightRadar ? seg(t, 18.4, 18.85, quintOut) : 0;
+  const DEMO = {
+    weekday: { label: "Tuesday, Nov 17", index: 1, sent: [2, 3], goal: 6 },
+    priorities: [
+      { date: "Wed Nov 18", time: "10 am", title: "Cedar Grove technical screen", note: "Remote · 45 min" },
+      { date: "Fri Nov 20", time: "Due", title: "Northwind application deadline", note: "Waterloo, ON · Backend Intern" }
+    ],
+    archived: { SAVED: 1, APPLIED: 7, INTERVIEW: 3, OFFER: 2 },
+    applications: [
+      { company: "Northwind", role: "Backend Intern", stage: "SAVED", skills: ["Python", "SQL"] },
+      { company: "Figma", role: "Product Design Intern", stage: "SAVED", skills: ["Figma"] },
+      { company: "Linear", role: "Software Intern", stage: "SAVED", skills: ["TypeScript"] },
+      { company: "Shopify", role: "Frontend Intern", stage: "APPLIED", skills: ["TypeScript", "React"] },
+      { company: "Datadog", role: "Platform Intern", stage: "APPLIED", skills: ["Go"] },
+      { company: "Ramp", role: "Product Engineer Intern", stage: "APPLIED", skills: ["TypeScript"] },
+      { company: "Cedar Grove", role: "ML Engineering Intern", stage: "INTERVIEW", skills: ["Python", "PyTorch"] },
+      { company: "Ada", role: "Data Engineer Intern", stage: "INTERVIEW", skills: ["Python", "SQL"] },
+      { company: "Vercel", role: "Web Platform Intern", stage: "INTERVIEW", skills: ["TypeScript"] },
+      { company: "Kitebird", role: "Platform Intern", stage: "OFFER", skills: ["Go"] }
+    ],
+    stripe: { company: "Stripe", role: "Software Engineer Intern", location: "Seattle, WA", skills: ["Python", "Go", "SQL"] },
+    openingTerm: "Summer 2027",
+    openings: [
+      { company: "Cloudflare", role: "Systems Engineer Intern", location: "Austin, TX", term: "Summer 2027", skills: ["Go"] },
+      { company: "Notion", role: "Product Engineer Intern", location: "New York, NY", term: "Fall 2027" },
+      { company: "Wealthsimple", role: "Software Developer Intern", location: "Toronto, ON", term: "Summer 2027" },
+      { company: "Fathom", role: "Data Engineering Intern", location: "Vancouver, BC", term: "Summer 2027" },
+      { company: "Sentry", role: "Developer Tools Intern", location: "Toronto, ON", term: "Summer 2027" },
+      { company: "Zipline", role: "Flight Software Intern", location: "South SF, CA", term: "Summer 2027" }
+    ],
+    prep: { practiced: 3, total: 6, score: 88 }
+  };
+  const featuredOpening = DEMO.openings[0];
+  const stripeSavedAt = AT.saveStripe + 0.15;
+  const percent = (part, total) => Math.round(100 * part / total);
 
-    return \`
-      <header class="view-head">
-        <div>
-          <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
-          <h1 class="view-title">Good morning, Jordan<span class="dot">.</span></h1>
-          <p class="view-sub">Tuesday, Nov 17 - 3 priorities due this week</p>
-        </div>
-      </header>
-      <section class="card strip" style="margin-bottom: 14px;">
-        <div class="strip-top">
-          <div class="strip-figure"><strong>\${activeCount}</strong><span>active applications</span></div>
-          <div class="strip-rate">Response rate <b>42%</b> (5 of 12 sent)</div>
-        </div>
-        <div class="stack-bar">
-          <span style="flex-grow:3; --s: var(--st-saved)"></span>
-          <span style="flex-grow:\${appliedGrow}; --s: var(--st-applied)"></span>
-          <span style="flex-grow:3; --s: var(--st-interview)"></span>
-          <span style="flex-grow:1; --s: var(--st-offer)"></span>
-        </div>
-      </section>
-      <div class="today-grid">
-        <section class="card upcoming-card \${highlightRadar ? "is-hovered" : ""}" data-anchor="radar-card" style="grid-column: span 7; \${highlightRadar ? \`box-shadow: 0 0 0 \${(3 * radarPulse).toFixed(1)}px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-md);\` : ""}">
-          <div class="card-head">
-            <div>
-              <h2 class="card-title">Next up - Deadline Radar</h2>
-              <p class="card-note">Upcoming interviews and closing dates</p>
-            </div>
-            <span class="pill st-INTERVIEW" style="\${highlightRadar ? "box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-interview) 35%, transparent);" : ""}">24h &amp; 2h .ics reminders</span>
-          </div>
-          <ul class="agenda">
-            <li class="agenda-day">
-              <span class="agenda-date today">Tomorrow</span>
-              <div class="agenda-items">
-                <div class="agenda-item" style="background: var(--paper-2);">
-                  <span class="agenda-kind" style="--s-bg: var(--st-interview-bg);">10a</span>
-                  <div class="agenda-text">
-                    <strong>Stripe - Technical Screen (45 min)</strong>
-                    <span>Seattle, WA - Python, Go, SQL</span>
-                  </div>
-                </div>
-              </div>
-            </li>
-            <li class="agenda-day">
-              <span class="agenda-date">Fri Nov 20</span>
-              <div class="agenda-items">
-                <div class="agenda-item">
-                  <span class="agenda-kind" style="--s-bg: var(--st-saved-bg);">Due</span>
-                  <div class="agenda-text">
-                    <strong>Northwind Robotics - Application Deadline</strong>
-                    <span>Syncs to Apple &amp; Google Calendar via .ics</span>
-                  </div>
-                </div>
-              </div>
-            </li>
-          </ul>
-        </section>
-        <section class="card goal-card" style="grid-column: span 5;">
-          <div class="card-head">
-            <div>
-              <h2 class="card-title">Weekly Goal</h2>
-              <p class="card-note">5 of 6 sent this week</p>
-            </div>
-          </div>
-          <div class="week-dots">
-            <div class="week-dot has"><i>M</i><span>1</span></div>
-            <div class="week-dot has"><i>T</i><span>2</span></div>
-            <div class="week-dot has"><i>W</i><span>1</span></div>
-            <div class="week-dot has today"><i>T</i><span>1</span></div>
-            <div class="week-dot future"><i>F</i><span>-</span></div>
-            <div class="week-dot future"><i>S</i><span>-</span></div>
-            <div class="week-dot future"><i>S</i><span>-</span></div>
-          </div>
-        </section>
-      </div>
-    \`;
+  function notebookAt(t) {
+    const active = [...DEMO.applications];
+    if (t >= stripeSavedAt) {
+      active.push({ ...DEMO.stripe, stage: t >= AT.dropStripe ? "INTERVIEW" : "APPLIED" });
+    }
+    if (t >= AT.saveOpening) active.push({ ...featuredOpening, stage: "SAVED" });
+    const counts = STAGES.map(stage => active.filter(app => app.stage === stage).length);
+    const funnel = STAGES.map((_, i) => STAGES.slice(i).reduce(
+      (total, stage, offset) => total + counts[i + offset] + DEMO.archived[stage], 0
+    ));
+    return { active, counts, funnel, total: funnel[0] };
   }
 
-  function renderBoardView(t, { forcePreDrag = false, forcePostDrop = false } = {}) {
-    const dragStart = 6.10;
-    const dragEnd = 7.45;
-    const isDragging = !forcePreDrag && !forcePostDrop && t >= dragStart && t < dragEnd;
-    const dropped = forcePostDrop || (!forcePreDrag && t >= dragEnd);
-    const filterPython = !forcePreDrag && !forcePostDrop && t >= 8.65;
-
-    const dragP = seg(t, dragStart, dragEnd, quintInOut);
-    const lift = isDragging ? Math.sin(clamp((t - dragStart) / 0.25, 0, 1) * Math.PI * 0.5) * (1 - Math.pow(clamp((t - (dragEnd - 0.18)) / 0.18, 0, 1), 2)) : 0;
-    const slotGrow = isDragging ? smoothstep(clamp((t - 6.35) / 0.45, 0, 1)) : 0;
-    const stampPop = dropped && !forcePostDrop ? clamp(springOut(t - dragEnd, 320, 20), 0, 1.1) : (forcePostDrop ? 1 : 0);
-
-    // Filter out non-Python cards cleanly
-    const filterP = filterPython ? seg(t, 8.65, 9.0, quintOut) : 0;
-    const nonPyStyle = filterPython
-      ? \`opacity:\${(1 - filterP).toFixed(3)}; transform: scale(\${(1 - 0.08 * filterP).toFixed(3)}); max-height:\${Math.round(140 * (1 - filterP))}px; margin-bottom:\${Math.round(8 * (1 - filterP))}px; padding-top:\${Math.round(11 * (1 - filterP))}px; padding-bottom:\${Math.round(11 * (1 - filterP))}px; overflow:hidden; border-width:\${filterP > 0.85 ? 0 : 1}px;\`
-      : "";
-
-    const stripeCardHover = !isDragging && !dropped && t >= 5.75 && t < dragStart;
-    const stripePostHover = dropped && t >= 9.6 && t < 10.4;
-
-    const stripeCardHtml = (showStamp) => \`
-      <article class="app-card st-\${dropped ? "INTERVIEW" : "APPLIED"} \${stripeCardHover || stripePostHover ? "is-hovered" : ""}" data-anchor="\${dropped ? "card-stripe-interview" : "card-stripe-applied"}" style="\${dropped ? "border-color: var(--st-interview); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-interview) 26%, transparent), var(--shadow-md);" : ""}">
-        <div class="app-card-top"><span class="app-company">Stripe</span></div>
-        <h3 class="app-role">Software Engineer Intern</h3>
-        <div class="app-meta"><span>Seattle, WA</span></div>
-        <div class="chips"><span class="chip">Python</span><span class="chip">Go</span><span class="chip">SQL</span></div>
-        \${showStamp ? \`<span class="demo-history-stamp" style="transform: scale(\${stampPop.toFixed(3)}); opacity: \${clamp(stampPop * 1.4, 0, 1).toFixed(2)};">Moved to Interview · Just now</span>\` : ""}
-      </article>
-    \`;
-
-    // Drag start/end centers computed relative to #demo-page
-    const dragStartPt = window.__BOARD_DRAG_START || { x: 432, y: 205 };
-    const dragEndPt = window.__BOARD_DRAG_END || { x: 625, y: 196 };
-    const dragX = lerp(dragStartPt.x, dragEndPt.x, dragP);
-    const dragY = lerp(dragStartPt.y, dragEndPt.y, dragP) - Math.sin(dragP * Math.PI) * 26;
-    const dragScale = 1 + 0.048 * lift;
-    const dragRot = -1.8 * lift;
+  function renderTodayView(t, { calendar = false } = {}) {
+    const { active, counts, funnel } = notebookAt(t);
+    const { weekday, priorities } = DEMO;
+    const sentThisWeek = weekday.sent.reduce((sum, sent) => sum + sent, 0);
+    const menuOpen = calendar && t >= AT.openExport && t < AT.downloadCalendar + 0.12;
 
     return \`
-      <header class="view-head">
-        <div>
-          <p class="eyebrow" style="--tab: var(--tab-board)">Board</p>
-          <h1 class="view-title">Pipeline Board<span class="dot">.</span></h1>
-        </div>
-        <div class="filters" style="margin:0;">
-          <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (11)</button>
-          <button type="button" class="filter-chip \${t >= 8.35 && t < 8.65 ? "is-hovered" : ""}" data-anchor="chip-python" aria-pressed="\${filterPython}">Python (4)</button>
-          <button type="button" class="filter-chip" aria-pressed="false">TypeScript (4)</button>
-        </div>
-      </header>
-      <div class="board" style="grid-auto-columns: minmax(170px, 1fr); gap: 10px;">
-        <section class="column st-SAVED">
-          <div class="column-head"><span class="dot"></span><h2>Saved</h2><span class="count">\${filterPython ? 1 : 3}</span></div>
-          <div class="column-cards">
-            <article class="app-card st-SAVED">
-              <div class="app-card-top"><span class="app-company">Northwind</span></div>
-              <h3 class="app-role">Backend Intern</h3>
-              <div class="chips"><span class="chip">Python</span><span class="chip">SQL</span></div>
-            </article>
-            \${filterP < 0.99 ? \`<article class="app-card st-SAVED" style="\${nonPyStyle}"><div class="app-card-top"><span class="app-company">Figma</span></div><h3 class="app-role">Product Design</h3><div class="chips"><span class="chip">Figma</span></div></article>\` : ""}
+      <section class="view \${calendar ? "demo-calendar-view" : "demo-today-view"}">
+        <header class="view-head">
+          <div>
+            <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
+            <h1 class="view-title">\${calendar ? "Deadlines &amp; Calendar" : "Good morning, Jordan"}<span class="dot">.</span></h1>
+            <p class="view-sub">\${weekday.label} · \${priorities.length} priorities due this week</p>
+          </div>
+          \${calendar ? \`
+            <div class="demo-export">
+              <button class="button \${t >= AT.openExport - 0.25 && t < AT.openExport ? "is-hovered" : ""}" data-anchor="open-export" aria-expanded="\${menuOpen}" type="button">Export</button>
+              \${menuOpen ? \`<div class="card demo-export-menu">
+                <button class="button \${t >= AT.downloadCalendar - 0.25 ? "is-hovered" : ""}" data-anchor="download-calendar" type="button">Download calendar (.ics)</button>
+              </div>\` : ""}
+            </div>\` : ""}
+        </header>
+        <section class="card strip" style="margin-bottom: 14px">
+          <div class="strip-top">
+            <div class="strip-figure"><strong>\${active.length}</strong><span>active applications</span></div>
+            <div class="strip-rate">Response rate <b>\${percent(funnel[2], funnel[1])}%</b> (\${funnel[2]} of \${funnel[1]} sent)</div>
+          </div>
+          <div class="stack-bar">
+            \${STAGES.map((stage, i) => \`<span style="flex-grow:\${counts[i]}; --s: var(--st-\${stage.toLowerCase()})"></span>\`).join("")}
           </div>
         </section>
-        <section class="column st-APPLIED">
-          <div class="column-head"><span class="dot"></span><h2>Applied</h2><span class="count">\${dropped || isDragging ? (filterPython ? 0 : 3) : (filterPython ? 1 : 4)}</span></div>
-          <div class="column-cards">
-            \${(!isDragging && !dropped) ? stripeCardHtml(false) : ""}
-            \${filterP < 0.99 ? \`<article class="app-card st-APPLIED" style="\${nonPyStyle}"><div class="app-card-top"><span class="app-company">Shopify</span></div><h3 class="app-role">Frontend Intern</h3><div class="chips"><span class="chip">React</span></div></article>\` : ""}
-          </div>
-        </section>
-        <section class="column st-INTERVIEW \${isDragging ? "drop" : ""}">
-          <div class="column-head"><span class="dot"></span><h2>Interview</h2><span class="count">\${dropped ? (filterPython ? 2 : 4) : (filterPython ? 1 : 3)}</span></div>
-          <div class="column-cards">
-            \${isDragging ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:\${Math.round(108 * slotGrow)}px; opacity:\${slotGrow.toFixed(2)}; margin-bottom:\${Math.round(8 * slotGrow)}px;"></div>\` : ""}
-            \${dropped ? stripeCardHtml(true) : ""}
-            \${forcePreDrag ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:108px; opacity:0; position:relative; pointer-events:none;"></div>\` : ""}
-            <article class="app-card st-INTERVIEW">
-              <div class="app-card-top"><span class="app-company">Cedar Grove</span></div>
-              <h3 class="app-role">ML Engineering Intern</h3>
-              <div class="chips"><span class="chip">Python</span><span class="chip">PyTorch</span></div>
-            </article>
-          </div>
-        </section>
-        <section class="column st-OFFER">
-          <div class="column-head"><span class="dot"></span><h2>Offer</h2><span class="count">\${filterPython ? 0 : 1}</span></div>
-          <div class="column-cards">
-            \${filterP < 0.99 ? \`<article class="app-card st-OFFER" style="\${nonPyStyle}"><div class="app-card-top"><span class="app-company">Kitebird</span></div><h3 class="app-role">Platform Intern</h3><div class="chips"><span class="chip">Go</span></div></article>\` : ""}
-          </div>
-        </section>
-      </div>
-      \${isDragging ? \`
-        <article class="app-card st-APPLIED demo-drag-card" style="left:\${dragX.toFixed(1)}px; top:\${dragY.toFixed(1)}px; transform: translate(-50%, -50%) scale(\${dragScale.toFixed(4)}) rotate(\${dragRot.toFixed(2)}deg);">
-          <div class="app-card-top"><span class="app-company">Stripe</span></div>
-          <h3 class="app-role">Software Engineer Intern</h3>
-          <div class="app-meta"><span>Seattle, WA</span></div>
-          <div class="chips"><span class="chip">Python</span><span class="chip">Go</span><span class="chip">SQL</span></div>
-        </article>
-      \` : ""}
-    \`;
-  }
-
-  function getMockStats(t) {
-    const p = seg(t, 12.55, 13.35, quintOut);
-    return {
-      score: Math.round(lerp(62, 88, p)),
-      wpm: Math.round(lerp(122, 138, p))
-    };
-  }
-
-  function renderEntryPrepView(t, { forceScrollSettled = false } = {}) {
-    const scrollOffset = forceScrollSettled ? 188 : seg(t, 10.85, 11.95, cubicInOut) * 188;
-    const practiced = !forceScrollSettled && t >= 12.55;
-    const barWidth = practiced ? lerp(50, 67, seg(t, 12.55, 13.05, quintOut)) : 50;
-    const mockS = practiced ? clamp(springOut(t - 12.60, 260, 21), 0, 1.06) : 0;
-    const mockOpacity = practiced ? clamp((t - 12.60) / 0.25, 0, 1) : 0;
-    const { score, wpm } = getMockStats(t);
-
-    return \`
-      <div style="transform: translateY(-\${scrollOffset.toFixed(1)}px);">
-        <article class="sheet-page" style="padding: 20px 30px 26px 68px;">
-          <div class="entry-head" style="margin-bottom: 12px;">
-            <span class="entry-company">Stripe</span>
-            <h1 class="entry-role" style="font-size: 1.78rem;">Software Engineer Intern</h1>
-          </div>
-          <div class="stepper" style="margin-bottom: 16px;">
-            <div class="steps">
-              <div class="step done st-SAVED"><span>Saved</span></div>
-              <div class="step done st-APPLIED"><span>Applied</span></div>
-              <div class="step current st-INTERVIEW"><span>Interview</span></div>
-              <div class="step st-OFFER"><span>Offer</span></div>
-            </div>
-          </div>
-          <div class="entry-fields" style="margin-bottom: 12px;">
-            <div class="line-field"><span>Location</span><div style="padding:3px 0; font-weight:600;">Seattle, WA</div></div>
-            <div class="line-field"><span>Skills</span><div style="padding:3px 0; font-weight:600;">Python, Go, SQL</div></div>
-          </div>
-          <section class="prep" style="margin-top: 10px; padding-top: 12px;">
-            <div class="prep-head">
+        <div class="today-grid">
+          <section class="card upcoming-card \${calendar ? "is-hovered" : ""}" data-anchor="radar-card" style="grid-column: span 7">
+            <div class="card-head">
               <div>
-                <h2 class="card-title">Role-matched interview prep</h2>
-                <p class="prep-sub">STAR behavioral and backend system prompts</p>
+                <h2 class="card-title">Deadline Radar</h2>
+                <p class="card-note">Upcoming interviews and closing dates</p>
               </div>
-              <span class="prep-summary">\${practiced ? "4 of 6 practiced" : "3 of 6 practiced"}</span>
             </div>
-            <div class="prep-progress">
-              <div class="prep-bar"><i style="width:\${barWidth.toFixed(1)}%"></i></div>
-            </div>
-            <div class="prep-group" style="background: var(--card);">
-              <ul class="prep-list" style="padding: 4px 14px;">
-                <li class="prep-q \${practiced ? "is-practiced" : ""}">
-                  <span class="prep-text">Tell me about a system bottleneck you diagnosed and resolved (STAR).</span>
-                  <div class="prep-actions">
-                    <button type="button" data-anchor="btn-mark-practiced" class="prep-mark practiced \${t >= 12.15 && t < 12.55 ? "is-hovered" : ""}" aria-pressed="\${practiced}">\${practiced ? "Practiced" : "Mark practiced"}</button>
+            <ul class="agenda">
+              \${priorities.map((item, i) => \`
+                <li class="agenda-day">
+                  <span class="agenda-date">\${item.date}</span>
+                  <div class="agenda-items">
+                    <div class="agenda-item" style="background: var(--paper-2)">
+                      <span class="agenda-kind" style="--s-bg: var(--st-\${i === 0 ? "interview" : "saved"}-bg)">\${item.time}</span>
+                      <div class="agenda-text"><strong>\${item.title}</strong><span>\${item.note}</span></div>
+                    </div>
                   </div>
-                </li>
-                <li class="prep-q">
-                  <span class="prep-text">Design an idempotent webhook delivery queue with retries in Go.</span>
-                  <div class="prep-actions">
-                    <button type="button" class="prep-mark practiced" aria-pressed="true">Practiced</button>
-                  </div>
-                </li>
-              </ul>
-            </div>
-            <div class="demo-mock-card" style="opacity:\${mockOpacity.toFixed(3)}; transform: translateY(\${((1 - mockS) * 18).toFixed(1)}px) scale(\${lerp(0.96, 1, mockS).toFixed(3)});">
-              <div class="demo-mock-score-box">
-                <strong>\${score} / 100</strong>
-                <span>Readiness</span>
-              </div>
+                </li>\`).join("")}
+            </ul>
+            \${calendar ? '<p style="margin-top:16px"><span class="pill st-INTERVIEW">24 h and 2 h reminders</span></p>' : ""}
+          </section>
+          <section class="card goal-card" style="grid-column: span 5">
+            <div class="card-head">
               <div>
-                <strong style="font-size: 0.94rem; color: var(--ink);">Timed Mock Interview Feedback</strong>
-                <div class="demo-mock-metrics">
-                  <span class="demo-metric-pill good">STAR structure complete</span>
-                  <span class="demo-metric-pill">\${wpm} wpm</span>
-                  <span class="demo-metric-pill">0 filler phrases</span>
-                </div>
+                <h2 class="card-title">Weekly Goal</h2>
+                <p class="card-note">Applications sent this week</p>
               </div>
+            </div>
+            <div class="ring">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle class="ring-track" cx="50" cy="50" r="42"></circle>
+                <circle class="ring-fill" cx="50" cy="50" r="42" pathLength="100" stroke-dasharray="\${100 * sentThisWeek / weekday.goal} 100"></circle>
+              </svg>
+              <div class="ring-label"><strong>\${sentThisWeek} / \${weekday.goal}</strong><span>Sent</span></div>
+            </div>
+            <div class="week-dots">
+              \${[..."MTWTFSS"].map((day, i) => \`
+                <div class="week-dot \${i > weekday.index ? "future" : "has"} \${i === weekday.index ? "today" : ""}">
+                  <i>\${day}</i><span>\${weekday.sent[i] ?? ""}</span>
+                </div>\`).join("")}
             </div>
           </section>
-        </article>
-      </div>
+        </div>
+      </section>
     \`;
   }
 
-  function renderInsightsView(t) {
-    const f0 = seg(t, 15.80, 16.55, quintOut);
-    const f1 = seg(t, 15.88, 16.63, quintOut);
-    const f2 = seg(t, 15.96, 16.71, quintOut);
-    const f3 = seg(t, 16.04, 16.79, quintOut);
+  function renderBoardView(t, { measureDropSlot = false } = {}) {
+    const isDragging = t >= AT.grabStripe && t < AT.dropStripe;
+    const dropped = t >= AT.dropStripe;
+    const filterPython = t >= AT.filterPython;
+    const { active } = notebookAt(t);
+    const matches = skill => active.filter(app => app.skills.includes(skill)).length;
+    const cards = filterPython ? active.filter(app => app.skills.includes("Python")) : active;
+
+    const dragP = seg(t, AT.grabStripe, AT.dropStripe, quintInOut);
+    const lift = isDragging ? Math.sin(clamp((t - AT.grabStripe) / 0.25, 0, 1) * Math.PI * 0.5) *
+      (1 - Math.pow(clamp((t - (AT.dropStripe - 0.18)) / 0.18, 0, 1), 2)) : 0;
+    const dragStartPt = ANCHORS["card-stripe-applied"];
+    const dragEndPt = ANCHORS["slot-interview"];
+    const sourceHeight = dragStartPt?.height ?? 0;
+    const slotGrow = measureDropSlot ? 1 : seg(t, AT.grabStripe, AT.grabStripe + 0.35, smoothstep);
+    const settle = seg(t, AT.dropStripe, AT.dropStripe + 0.15, smoothstep);
+    const interviewHeight = ANCHORS["card-stripe-interview"]?.height ?? sourceHeight;
+    const landingStyle = dropped && settle < 1
+      ? \`height:\${lerp(sourceHeight, interviewHeight, settle)}px; overflow:hidden;\` : "";
+    const stamp = clamp(springOut(t - AT.dropStripe, 320, 20), 0, 1.1);
+
+    const renderCard = (app, { ghost = false, style = "" } = {}) => {
+      const stripe = app.company === DEMO.stripe.company;
+      const hover = stripe && !ghost && (!dropped
+        ? t >= AT.grabStripe - 0.22
+        : t >= CHAPTER.prep - 0.25);
+      const anchor = stripe && !ghost ? \`data-anchor="card-stripe-\${dropped ? "interview" : "applied"}"\` : "";
+      const dragClass = ghost ? "demo-drag-card" : stripe && isDragging ? "drag-origin" : "";
+      return \`
+        <article class="app-card st-\${app.stage} \${dragClass} \${hover ? "is-hovered" : ""}" \${anchor} \${ghost ? 'aria-hidden="true"' : ""} style="\${style}">
+          <div class="app-card-top"><span class="app-company">\${app.company}</span></div>
+          <h3 class="app-role">\${app.role}</h3>
+          \${app.location ? \`<div class="app-meta"><span>\${app.location}</span></div>\` : ""}
+          <div class="chips">\${app.skills.map(skill => \`<span class="chip">\${skill}</span>\`).join("")}</div>
+          \${stripe && dropped ? \`<span class="demo-history-stamp" style="transform:scale(\${stamp.toFixed(3)}); opacity:\${clamp(stamp * 1.4, 0, 1).toFixed(2)}">Moved to Interview</span>\` : ""}
+        </article>\`;
+    };
+
+    const dragX = isDragging ? lerp(dragStartPt.x, dragEndPt.x, dragP) - pageOrigin.x : 0;
+    const dragY = isDragging ? lerp(dragStartPt.y, dragEndPt.y, dragP) - pageOrigin.y - Math.sin(dragP * Math.PI) * 26 : 0;
+    const ghostStyle = \`left:\${dragX}px; top:\${dragY}px; width:\${dragStartPt?.width}px; transform: translate(-50%, -50%) scale(\${1 + 0.048 * lift}) rotate(\${-1.8 * lift}deg)\`;
 
     return \`
-      <header class="view-head">
-        <div>
-          <p class="eyebrow" style="--tab: var(--tab-insights)">Insights</p>
-          <h1 class="view-title">Search Insights<span class="dot">.</span></h1>
-          <p class="view-sub">Conversion rates and top skills across your notebook</p>
+      <section class="view demo-board-view">
+        <header class="view-head">
+          <div>
+            <p class="eyebrow" style="--tab: var(--tab-board)">Board</p>
+            <h1 class="view-title">Pipeline Board<span class="dot">.</span></h1>
+          </div>
+          <div class="filters" style="margin:0">
+            <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (\${active.length})</button>
+            <button type="button" class="filter-chip \${t >= AT.filterPython - 0.25 && !filterPython ? "is-hovered" : ""}" data-anchor="chip-python" aria-pressed="\${filterPython}">Python (\${matches("Python")})</button>
+            <button type="button" class="filter-chip" aria-pressed="false">TypeScript (\${matches("TypeScript")})</button>
+          </div>
+        </header>
+        <div class="board">
+          \${STAGES.map(stage => {
+            const column = cards.filter(app => app.stage === stage);
+            column.sort((a, b) => Number(b.company === DEMO.stripe.company) - Number(a.company === DEMO.stripe.company));
+            const dropSlot = stage === "INTERVIEW" && (isDragging || measureDropSlot);
+            const slotSpace = sourceHeight + ${BOARD_CARD_GAP};
+            const padding = dropSlot ? slotSpace * slotGrow
+              : stage === "APPLIED" && dropped ? slotSpace * (1 - settle) : 0;
+            return \`<section class="column st-\${stage} \${isDragging && stage === "INTERVIEW" ? "drop" : ""}">
+              <div class="column-head"><span class="dot"></span><h2>\${stage}</h2><span class="count">\${column.length}</span></div>
+              <div class="column-cards" style="padding-top:\${padding}px">
+                \${dropSlot ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:\${sourceHeight * slotGrow}px; opacity:\${slotGrow.toFixed(2)}"></div>\` : ""}
+                \${column.length ? column.map(app => renderCard(app, {
+                  style: app.company === DEMO.stripe.company ? landingStyle : ""
+                })).join("") : '<p class="column-empty">No matches</p>'}
+              </div>
+            </section>\`;
+          }).join("")}
         </div>
-      </header>
-      <section class="kpis">
-        <article class="card kpi"><p>Applications</p><strong>24</strong><span>11 active</span></article>
-        <article class="card kpi"><p>Response rate</p><strong>42%</strong><span>+9% this month</span></article>
-        <article class="card kpi"><p>Interviews</p><strong>5</strong><span>33% of applied</span></article>
-        <article class="card kpi"><p>Offers</p><strong>2</strong><span>11% conversion</span></article>
-        <article class="card kpi"><p>Prep practiced</p><strong>88%</strong><span>STAR complete</span></article>
+        \${isDragging ? renderCard({ ...DEMO.stripe, stage: "APPLIED" }, { ghost: true, style: ghostStyle }) : ""}
       </section>
-      <div class="insight-grid">
-        <section class="card" data-anchor="funnel-card">
-          <div class="card-head"><div><h2 class="card-title">Response-Rate Conversion Funnel</h2><p class="card-note">Stage progression across sent applications</p></div></div>
-          <div class="funnel">
-            <div class="funnel-row"><span>Saved</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(100 * f0).toFixed(1)}%; background: var(--st-saved);"></div><span class="funnel-value">24 <small>(100%)</small></span></div></div>
-            <div class="funnel-row"><span>Applied</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(75 * f1).toFixed(1)}%; background: var(--st-applied);"></div><span class="funnel-value">18 <small>(75%)</small></span></div></div>
-            <div class="funnel-row"><span>Interview</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(33 * f2).toFixed(1)}%; background: var(--st-interview);"></div><span class="funnel-value">6 <small>(33%)</small></span></div></div>
-            <div class="funnel-row"><span>Offer</span><div class="funnel-track"><div class="funnel-bar" style="width:\${(14 * f3).toFixed(1)}%; background: var(--st-offer);"></div><span class="funnel-value">2 <small>(11%)</small></span></div></div>
+    \`;
+  }
+
+  function renderOpeningsView(t) {
+    const filtered = t >= AT.filterTerm;
+    const saved = t >= AT.saveOpening;
+    const { active } = notebookAt(t);
+    const summerOpenings = DEMO.openings.filter(opening => opening.term === DEMO.openingTerm);
+    const openings = filtered ? summerOpenings : DEMO.openings;
+    return \`
+      <section class="view demo-openings-view">
+        <header class="view-head">
+          <div>
+            <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
+            <h1 class="view-title">Internship Openings<span class="dot">.</span></h1>
+            <p class="view-sub">\${openings.length} openings · \${active.length} active applications</p>
+          </div>
+          <button class="button \${t >= CHAPTER.calendar - 0.25 ? "is-hovered" : ""}" data-anchor="nav-calendar" type="button">Deadline Radar</button>
+        </header>
+        <div class="demo-openings-feed">
+          <div class="filters" style="margin-bottom: 12px">
+            <button class="filter-chip" aria-pressed="\${!filtered}" type="button">All terms (\${DEMO.openings.length})</button>
+            <button class="filter-chip \${!filtered && t >= AT.filterTerm - 0.25 ? "is-hovered" : ""}" data-anchor="filter-term" aria-pressed="\${filtered}" type="button">\${DEMO.openingTerm} (\${summerOpenings.length})</button>
+          </div>
+          <div class="card demo-openings-list">
+            \${openings.map(opening => {
+              const featured = opening === featuredOpening;
+              const isSaved = featured && saved;
+              const hover = featured && !isSaved && t >= AT.saveOpening - 0.25;
+              return \`
+                <article class="demo-opening-row">
+                  <strong>\${opening.company}</strong>
+                  <span>\${opening.role}</span>
+                  <small>\${opening.location}</small>
+                  <small>\${opening.term}</small>
+                  <button class="button small \${hover ? "is-hovered" : ""}" \${featured ? 'data-anchor="save-opening"' : ""} \${isSaved ? 'aria-pressed="true"' : ""} type="button">\${isSaved ? "Saved" : "Save"}</button>
+                </article>\`;
+            }).join("")}
+          </div>
+        </div>
+      </section>
+    \`;
+  }
+
+  let prepMockHeight = 0;
+  let prepScroll = 0;
+  function renderEntryPrepView(t, scrollTime = t) {
+    const { company, role, location, skills } = DEMO.stripe;
+    const { practiced, total, score } = DEMO.prep;
+    const marked = t >= AT.markPracticed;
+    const barWidth = 100 * (practiced + seg(t, AT.markPracticed, AT.markPracticed + 0.5, quintOut)) / total;
+    const mockStart = AT.markPracticed + 0.18;
+    const mockSpring = clamp(springOut(t - mockStart, 260, 21), 0, 1.06);
+    const mockProgress = seg(t, mockStart, mockStart + 1.05, smoothstep);
+    const mockScore = Math.round(lerp(62, score, mockProgress));
+    const contextOpacity = 1 - seg(t, CHAPTER.prep + 0.4, PREP_SCROLL_START, smoothstep);
+    const detailClass = FOCUS_SELECTORS.prep === PREP_DETAIL ? " prep-detail" : "";
+    const questions = [
+      { text: "Design an idempotent webhook delivery queue with retries in Go.", done: true },
+      { text: "How would you trace a slow SQL query under production load?", done: false },
+      { text: "Tell me about a system bottleneck you diagnosed and resolved (STAR).", done: marked, featured: true }
+    ];
+
+    return \`
+      <article class="sheet-page demo-prep-page\${detailClass}" style="padding: 18px 28px 22px 76px; transform: translateY(\${-prepScrollOffset(scrollTime)}px); --prep-context-opacity: \${contextOpacity}; --prep-context-visibility: \${contextOpacity ? "visible" : "hidden"}">
+        <div class="entry-head">
+          <span class="entry-company">\${company}</span>
+          <h1 class="entry-role" style="font-size: 1.78rem">\${role}</h1>
+        </div>
+        <div class="stepper">
+          <div class="steps">
+            <div class="step done st-SAVED"><span>Saved</span></div>
+            <div class="step done st-APPLIED"><span>Applied</span></div>
+            <div class="step current st-INTERVIEW"><span>Interview</span></div>
+            <div class="step st-OFFER"><span>Offer</span></div>
+          </div>
+        </div>
+        <div class="entry-fields">
+          <div class="line-field"><span>Location</span><div style="padding:3px 0; font-weight:600">\${location}</div></div>
+          <div class="line-field"><span>Skills</span><div style="padding:3px 0; font-weight:600">\${skills.join(", ")}</div></div>
+        </div>
+        <section class="prep" style="margin-top: 8px; padding-top: 12px">
+          <div class="prep-head">
+            <div>
+              <h2 class="card-title">Role-matched interview prep</h2>
+              <p class="prep-sub">Featured behavioral and backend prompts</p>
+            </div>
+            <span class="prep-summary">\${practiced + Number(marked)} of \${total} practiced</span>
+          </div>
+          <div class="prep-progress">
+            <div class="prep-bar"><i style="width:\${barWidth.toFixed(1)}%"></i></div>
+          </div>
+          <div class="prep-group">
+            <ul class="prep-list" style="padding: 4px 14px">
+              \${questions.map(question => \`
+                <li class="prep-q \${question.done ? "is-practiced" : ""}" \${question.featured ? 'data-focus="prep-question"' : ""}>
+                  <span class="prep-text">\${question.text}</span>
+                  <div class="prep-actions">
+                    <button type="button" \${question.featured ? 'data-anchor="btn-mark-practiced"' : ""}
+                      class="prep-mark practiced \${question.featured && t >= AT.markPracticed - 0.25 && !marked ? "is-hovered" : ""}" aria-pressed="\${question.done}">\${question.done ? "Practiced" : "Mark practiced"}</button>
+                  </div>
+                </li>\`).join("")}
+            </ul>
+          </div>
+          <div class="demo-mock-card" style="min-height: \${prepMockHeight}px">
+            <div class="demo-mock-score-box">
+              <strong style="white-space:nowrap">\${t >= mockStart ? mockScore + " / 100" : "Mock"}</strong>
+              <span>\${t >= mockStart ? "Readiness" : "Interview"}</span>
+            </div>
+            <div>
+              <strong style="font-size: 0.94rem; color: var(--ink)">Timed mock interview</strong>
+              <div class="demo-mock-metrics" style="transform: translateY(\${(1 - mockSpring) * 5}px)">
+                \${t >= mockStart ? \`
+                  <span class="demo-metric-pill good">STAR structure complete</span>
+                  <span class="demo-metric-pill">\${Math.round(lerp(122, 138, mockProgress))} wpm</span>
+                  <span class="demo-metric-pill">0 filler phrases</span>\` : '<span class="demo-metric-pill">Pace and STAR feedback</span>'}
+              </div>
+            </div>
           </div>
         </section>
-        <section class="card">
-          <div class="card-head"><div><h2 class="card-title">Top Skills in Interviews</h2><p class="card-note">Highest callback rate by tag</p></div></div>
-          <div class="skill-bars">
-            <div class="skill-bar"><span>Python</span><i style="width:\${(92 * f0).toFixed(1)}%"></i><b>9</b></div>
-            <div class="skill-bar"><span>Go</span><i style="width:\${(72 * f1).toFixed(1)}%"></i><b>7</b></div>
-            <div class="skill-bar"><span>SQL</span><i style="width:\${(64 * f2).toFixed(1)}%"></i><b>6</b></div>
-            <div class="skill-bar"><span>TypeScript</span><i style="width:\${(52 * f3).toFixed(1)}%"></i><b>5</b></div>
+      </article>
+    \`;
+  }
+
+  function renderInsightsView(t, { active, funnel, total } = notebookAt(t)) {
+    const [, sent, interview, offers] = funnel;
+    const responseRate = percent(interview, sent);
+    const barProgress = seg(t, CHAPTER.insights + 0.28, CHAPTER.insights + 1.28, quintOut);
+    const barWidth = (value, max) => 100 * value / max * barProgress;
+    const skillCounts = new Map();
+    for (const app of active.filter(app => app.stage === "INTERVIEW" || app.stage === "OFFER")) {
+      for (const skill of app.skills) skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1);
+    }
+    const topSkills = [...skillCounts].sort((a, b) => b[1] - a[1]).slice(0, 4);
+
+    return \`
+      <section class="view demo-insights-view">
+        <header class="view-head">
+          <div>
+            <p class="eyebrow" style="--tab: var(--tab-insights)">Insights</p>
+            <h1 class="view-title">Search Insights<span class="dot">.</span></h1>
+            <p class="view-sub">Conversion rates and top skills across your notebook</p>
           </div>
+        </header>
+        <section class="kpis">
+          <article class="card kpi"><p>Applications</p><strong>\${total}</strong><span>\${active.length} active</span></article>
+          <article class="card kpi"><p>Response rate</p><strong>\${responseRate}%</strong><span>\${interview} of \${sent} sent</span></article>
+          <article class="card kpi"><p>Interviews</p><strong>\${interview}</strong><span>\${responseRate}% of sent</span></article>
+          <article class="card kpi"><p>Offers</p><strong>\${offers}</strong><span>\${percent(offers, sent)}% of sent</span></article>
+          <article class="card kpi"><p>Mock score</p><strong>\${DEMO.prep.score}</strong><span>Out of 100</span></article>
         </section>
-      </div>
+        <div class="insight-grid">
+          <section class="card" data-anchor="funnel-card">
+            <div class="card-head"><div><h2 class="card-title">Conversion Funnel</h2><p class="card-note">Share of all applications by stage reached</p></div></div>
+            <div class="funnel">
+              \${["Saved", "Applied", "Interview", "Offer"].map((label, i) => {
+                const share = percent(funnel[i], total);
+                return \`<div class="funnel-row">
+                  <span>\${label}</span>
+                  <div class="funnel-track"><div class="funnel-bar" style="width:\${barWidth(funnel[i], total)}%; background: var(--st-\${label.toLowerCase()})"></div></div>
+                  <span class="funnel-value">\${funnel[i]} <small>(\${share}%)</small></span>
+                </div>\`;
+              }).join("")}
+            </div>
+          </section>
+          <section class="card">
+            <div class="card-head"><div><h2 class="card-title">Top Skills in Interviews</h2><p class="card-note">Most common tags among active interviews and offers</p></div></div>
+            <div class="skill-bars">
+              \${topSkills.map(([skill, count]) => \`<div class="skill-bar"><span>\${skill}</span><i style="width:\${barWidth(count, topSkills[0][1])}%"></i><b>\${count}</b></div>\`).join("")}
+            </div>
+          </section>
+        </div>
+      </section>
     \`;
   }
 
   function renderModal(t, { forceOpen = false } = {}) {
     const modal = document.getElementById("demo-modal");
-    const openT = 0.62;
-    const closeT = 3.92;
+    const openT = AT.newPage;
+    const closeT = AT.saveStripe;
 
     if (!forceOpen && (t < openT || t >= closeT + 0.34)) {
       modal.style.opacity = "0";
@@ -859,14 +1024,13 @@ html, body {
       }
     }
 
-    const typingP = forceOpen ? 1 : seg(t, 1.15, 2.15, x => x);
-    const typedCount = Math.round(typingP * QUICK_URL.length);
-    const typedText = QUICK_URL.slice(0, typedCount);
+    const focused = !forceOpen && t >= AT.focusLink && t < AT.fill;
+    const pasted = forceOpen || t >= AT.pasteLink;
 
-    const fillClickT = 2.42;
+    const fillClickT = AT.fill;
     const filled = forceOpen || t >= fillClickT + 0.04;
-    const fillHover = !forceOpen && t >= 2.25 && t < fillClickT;
-    const saveHover = !forceOpen && t >= 3.55 && t < closeT;
+    const fillHover = !forceOpen && t >= fillClickT - 0.17 && t < fillClickT;
+    const saveHover = !forceOpen && t >= closeT - 0.35 && t < closeT;
 
     const fieldReveal = (idx) => {
       if (forceOpen) return { op: 1, flash: false };
@@ -879,10 +1043,10 @@ html, body {
     };
 
     const fields = [
-      { label: "Company", val: "Stripe", empty: "e.g. Shopify", idx: 0 },
-      { label: "Role", val: "Software Engineer Intern", empty: "e.g. Backend Intern", idx: 1 },
-      { label: "Location", val: "Seattle, WA", empty: "City or Remote", idx: 2 },
-      { label: "Skills", val: "Python, Go, SQL", empty: "Comma separated", idx: 3 }
+      { label: "Company", val: DEMO.stripe.company, empty: "e.g. Shopify", idx: 0 },
+      { label: "Role", val: DEMO.stripe.role, empty: "e.g. Backend Intern", idx: 1 },
+      { label: "Location", val: DEMO.stripe.location, empty: "City or Remote", idx: 2 },
+      { label: "Skills", val: DEMO.stripe.skills.join(", "), empty: "Comma separated", idx: 3 }
     ];
 
     modal.style.opacity = backdropOpacity.toFixed(3);
@@ -898,8 +1062,9 @@ html, body {
           <div class="quickfill-bar">
             <span class="field-label">Quick fill from link or job text</span>
             <div class="quickfill-row">
-              <div class="demo-quickfill-display \${forceOpen || (t >= 1.05 && t < fillClickT) ? "is-focused" : ""}" data-anchor="quickfill-input">
-                \${typedCount > 0 ? \`<span>\${typedText}</span>\${!forceOpen && typingP < 1 ? '<span class="demo-typing-caret"></span>' : ''}\` : '<span class="demo-quickfill-placeholder">Paste a job URL or title...</span>'}
+              <div class="demo-quickfill-display \${focused ? "is-focused" : ""}" data-anchor="quickfill-input">
+                \${pasted ? \`<span>\${QUICK_URL}</span>\` : '<span class="demo-quickfill-placeholder">Paste a job URL or title...</span>'}
+                \${focused && pasted ? '<span class="demo-typing-caret"></span>' : ""}
               </div>
               <button class="button small \${fillHover ? "is-hovered" : ""}" data-anchor="quickfill-fill" type="button">Fill</button>
             </div>
@@ -925,112 +1090,230 @@ html, body {
     \`;
   }
 
-  // Camera keyframes: [time, scale, focusX, focusY] in unzoomed stage coords
-  const CAMERA_KEYS = [
-    [0.00, 1.00, 640, 360],
-    [0.58, 1.04, 580, 340],
-    [1.08, 1.35, 735, 335], // Modal quickfill & fields
-    [3.50, 1.32, 745, 385], // Save button
-    [4.45, 1.06, 520, 340], // Pull out to sidebar Board tab
-    [5.20, 1.04, 560, 350],
-    [5.85, 1.36, 650, 290], // Zoom into Applied + Interview columns
-    [7.60, 1.32, 760, 285], // Card settled in Interview
-    [8.30, 1.30, 960, 165], // Pan up-right to Python filter chip
-    [9.40, 1.36, 785, 255], // Back to Stripe card in Interview
-    [10.45, 1.08, 680, 340], // Entry page overview
-    [11.80, 1.40, 770, 375], // Macro zoom onto Role-matched interview prep + Mock box
-    [14.80, 1.34, 750, 390],
-    [15.40, 1.08, 490, 360], // Pull back to sidebar Insights
-    [16.15, 1.30, 730, 415], // Zoom onto Conversion Funnel & Top Skills
-    [17.65, 1.08, 520, 350], // Pull back to sidebar Today
-    [18.55, 1.26, 610, 395], // Focus on Deadline Radar (.ics alerts)
-    [19.75, 1.24, 610, 395],
-    [20.75, 1.00, 640, 360], // Exact t=0.0 resting frame for invisible loop
-    [20.80, 1.00, 640, 360]
-  ];
+  const WIN_LEFT = (VIEW_W - WIN_W) / 2;
+  const WIN_TOP = (VIEW_H - WIN_H) / 2;
+  const VIEW_TRANSITION_SEC = 0.32;
+  const BOARD_APPROACH = CHAPTER.board + VIEW_TRANSITION_SEC + 0.05;
+  const PYTHON_APPROACH = 7.68;
+  const BRAND_TEXT = ".cover-title, .cover-sub";
+  const CALENDAR_HEADER = BRAND_TEXT + ", .demo-calendar-view .view-head";
+  const RADAR = CALENDAR_HEADER + ', [data-anchor="radar-card"]';
+  const PREP_FULL = ".demo-prep-page :is(.prep-group, .demo-mock-card)";
+  const PREP_DETAIL = '.demo-prep-page :is([data-focus="prep-question"], .demo-mock-card)';
+  const PREP_SCROLL_START = CHAPTER.prep + 0.7;
+  const PREP_SCROLL_END = CHAPTER.prep + 1.55;
+  const PREP_HOLD_END = 13.97;
+  const FOCUS_SELECTORS = {
+    overview: "#demo-window",
+    brand: BRAND_TEXT,
+    "quick-fill": "#demo-modal .demo-modal-card, .demo-today-view .view-head > div",
+    board: ".demo-board-view .view-head, .board :is(.column-head, .app-card)",
+    prep: PREP_FULL,
+    openings: ".demo-openings-view .view-head, .demo-openings-feed",
+    radar: RADAR,
+    "radar-export": RADAR + ', [data-anchor="open-export"]',
+    export: CALENDAR_HEADER + ", .demo-export, .demo-export-menu",
+    funnel: BRAND_TEXT + ", .demo-insights-view :is(.view-head, .kpis, .insight-grid)"
+  };
+  const TOP_FRAMED_FOCUSES = new Set([
+    "quick-fill", "board", "openings", "radar", "radar-export", "export", "funnel"
+  ]);
 
-  function computeCamera(t) {
-    let scale = 1, fx = 640, fy = 360;
-    for (let i = 0; i < CAMERA_KEYS.length - 1; i++) {
-      const [t0, s0, x0, y0] = CAMERA_KEYS[i];
-      const [t1, s1, x1, y1] = CAMERA_KEYS[i + 1];
-      if (t >= t0 && t <= t1) {
-        const p = seg(t, t0, t1, cubicInOut);
-        scale = lerp(s0, s1, p);
-        fx = lerp(x0, x1, p);
-        fy = lerp(y0, y1, p);
-        break;
-      }
-    }
-    const tx = 640 - fx * scale;
-    const ty = 360 - fy * scale;
-    return { scale, tx, ty };
+  // [Time, target scale, focus, vertical aim offset, horizontal pan fraction].
+  const CAMERA_KEYS = [
+    [0, 1, "overview"],
+    [AT.newPage, 1, "overview"],
+    [1.13, 1.35, "quick-fill"],
+    [3.66, 1.35, "quick-fill"],
+    [4.36, 1, "overview"],
+    [BOARD_APPROACH, 1, "overview"],
+    [5.85, 1.35, "board"],
+    [AT.dropStripe, 1.35, "board"],
+    [PYTHON_APPROACH, 1.30, "board", 0, 0.045],
+    [8.66, 1.30, "board", 0, 0.045],
+    [8.76, 1.30, "board"],
+    [9.42, 1.30, "board"],
+    [10.05, 1, "overview"],
+    [11.10, 1, "overview"],
+    [11.9, 1.40, "prep"],
+    [PREP_HOLD_END, 1.40, "prep"],
+    [14.75, 1, "overview"],
+    [15.38, 1, "overview"],
+    [16.25, 1.30, "openings", -42],
+    [19.10, 1.30, "openings", -42],
+    [19.87, 1, "overview"],
+    [20.35, 1, "overview"],
+    [20.98, 1.26, "radar-export"],
+    [21.32, 1.26, "radar-export"],
+    [21.98, 1.30, "export", 0, 0.015],
+    [22.90, 1.30, "export", 0, 0.015],
+    [23.52, 1.24, "radar"],
+    [24.18, 1.24, "radar"],
+    [24.95, 1, "overview"],
+    [25.34, 1, "overview"],
+    [26.02, 1.26, "funnel"],
+    [27.68, 1.26, "funnel"],
+    [AT.dissolve, 1, "overview"],
+    [LOOP_END, 1, "overview"]
+  ];
+  const FOCUS_RECTS = {};
+
+  function enclosingRect(rects) {
+    return {
+      left: Math.min(...rects.map(r => r.left)),
+      top: Math.min(...rects.map(r => r.top)),
+      right: Math.max(...rects.map(r => r.right)),
+      bottom: Math.max(...rects.map(r => r.bottom))
+    };
   }
 
-  // Pre-measured DOM anchor map populated once at init
-  let ANCHORS = {};
-  function measureAnchors() {
-    const camEl = document.getElementById("demo-camera");
-    camEl.style.transform = "translate(0px, 0px) scale(1)";
-    const viewIn = document.getElementById("demo-view-in");
-    const viewOut = document.getElementById("demo-view-out");
-    viewOut.style.display = "none";
+  function focusRect(name, root = document) {
+    const rects = [...root.querySelectorAll(FOCUS_SELECTORS[name])].filter(visible)
+      .map(el => el.getBoundingClientRect());
+    return rects.length ? enclosingRect(rects) : null;
+  }
 
-    const capture = (root = document) => {
-      for (const el of root.querySelectorAll("[data-anchor]")) {
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) {
-          ANCHORS[el.dataset.anchor] = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-        }
+  function focusFit(rect) {
+    return Math.min(
+      (VIEW_W - 2 * ${FOCUS_MARGIN}) / (rect.right - rect.left),
+      (VIEW_H - 2 * ${FOCUS_MARGIN}) / (rect.bottom - rect.top)
+    );
+  }
+
+  function prepSelector(finalRect) {
+    return focusFit(finalRect) < 1.2 ? PREP_DETAIL : PREP_FULL;
+  }
+
+  function prepScrollOffset(t) {
+    return prepScroll * seg(t, PREP_SCROLL_START, PREP_SCROLL_END, quintInOut);
+  }
+
+  function verticalAim(rect, scale, offsetY = 0) {
+    const margin = ${FOCUS_MARGIN} + 0.01;
+    const room = VIEW_H - WIN_H * scale;
+    const minRoom = Math.min(room * 0.005, room * 0.995);
+    const maxRoom = Math.max(room * 0.005, room * 0.995);
+    const minAim = margin - (rect.top - WIN_TOP) * scale;
+    const maxAim = VIEW_H - margin - (rect.bottom - WIN_TOP) * scale;
+    const centerY = (rect.top + rect.bottom) / 2 + offsetY;
+    return clamp(clamp(VIEW_H / 2 - (centerY - WIN_TOP) * scale, minAim, maxAim), minRoom, maxRoom);
+  }
+
+  function cameraKeyPoses() {
+    return CAMERA_KEYS.map(([time, targetScale, focus, offsetY = 0, pan = 0]) => {
+      const rect = FOCUS_RECTS[focus];
+      if (!rect) throw new Error("Missing camera focus: " + focus);
+      const fit = focusFit(rect);
+      // Keep exact-fit shots inside the margin after transform rounding.
+      const scale = Math.min(targetScale, fit - 0.0001);
+      const room = VIEW_H - WIN_H * scale;
+      const vertical = focus === "overview" || room === 0 ? 0.5 : verticalAim(rect, scale, offsetY) / room;
+      return { time, scale, fit, focus, pan, vertical };
+    });
+  }
+
+  let cameraPoses;
+  function computeCamera(t, prepRect) {
+    const i = cameraPoses.findLastIndex(key => key.time <= t);
+    const a = cameraPoses[i];
+    const b = cameraPoses[i + 1] ?? a;
+    const p = a === b ? 0 : seg(t, a.time, b.time, quintInOut);
+    const scale = lerp(a.scale, b.scale, p);
+    let focus = p < 0.5 ? a.focus : b.focus;
+    if (a.focus === "overview" || b.focus === "overview") {
+      focus = scale <= 1.02 ? "overview" : a.focus === "overview" ? b.focus : a.focus;
+    }
+    const horizontal = lerp(a.pan, b.pan, p) + lerp(0.5, 0.02, seg(scale, 1, 1.1, smoothstep));
+    // Interpolate within the window's overscan so a push-in cannot expose backdrop.
+    const tx = (VIEW_W - WIN_W * scale) * horizontal - WIN_LEFT * scale;
+    let aim = (VIEW_H - WIN_H * scale) * lerp(a.vertical, b.vertical, p);
+    if (prepRect && (a.focus === "prep" || b.focus === "prep")) {
+      aim = lerp(aim, verticalAim(prepRect, scale), seg(scale, 1.02, 1.04, smoothstep));
+    }
+    if (TOP_FRAMED_FOCUSES.has(focus)) {
+      // Bring the heading into the zoom before the window starts filling the stage.
+      const topAim = verticalAim(FOCUS_RECTS[focus], scale, -VIEW_H);
+      aim = lerp(aim, topAim, seg(scale, 1.02, 1.1, smoothstep));
+    }
+    const ty = Math.max(aim - WIN_TOP * scale, 1 - FOCUS_RECTS.brand.top * scale);
+    return { scale, tx, ty, focus };
+  }
+
+  const ANCHORS = {};
+  let pageOrigin;
+  function measureAnchors() {
+    const view = document.getElementById("demo-view-in");
+    const pageRect = document.getElementById("demo-page").getBoundingClientRect();
+    pageOrigin = { x: pageRect.left, y: pageRect.top };
+
+    const capture = (root, ...names) => {
+      for (const name of names) {
+        const el = root.querySelector('[data-anchor="' + name + '"]');
+        const r = el?.getBoundingClientRect();
+        if (!r?.width || !r.height) throw new Error("Missing cursor anchor: " + name);
+        ANCHORS[name] = {
+          x: r.left + r.width / 2, y: r.top + r.height / 2,
+          left: r.left, top: r.top, width: r.width, height: r.height
+        };
       }
     };
 
-    // 1. Today + Sidebar
-    viewIn.innerHTML = renderTodayView(0);
+    const captureFocus = (...names) => {
+      for (const name of names) {
+        const current = focusRect(name);
+        if (!current) throw new Error("Missing camera focus: " + name);
+        const previous = FOCUS_RECTS[name];
+        FOCUS_RECTS[name] = previous ? enclosingRect([previous, current]) : current;
+      }
+    };
+    captureFocus("overview", "brand");
+    capture(document, "nav-new", "nav-board", "nav-today", "nav-insights");
+    view.innerHTML = renderTodayView(0);
+    renderModal(0, { forceOpen: true });
+    capture(document, "quickfill-input", "quickfill-fill", "modal-save");
+    captureFocus("quick-fill");
     renderModal(0);
-    capture();
 
-    // 2. Modal open
-    renderModal(3.2, { forceOpen: true });
-    capture();
-    renderModal(0);
-
-    // 3. Board pre-drag (save Stripe card + Interview drop slot)
-    viewIn.innerHTML = renderBoardView(5.6, { forcePreDrag: true });
-    capture();
-    const pageRect = document.getElementById("demo-page").getBoundingClientRect();
-    if (ANCHORS["card-stripe-applied"]) {
-      window.__BOARD_DRAG_START = {
-        x: ANCHORS["card-stripe-applied"].x - pageRect.left,
-        y: ANCHORS["card-stripe-applied"].y - pageRect.top
-      };
-    }
-    if (ANCHORS["slot-interview"]) {
-      window.__BOARD_DRAG_END = {
-        x: ANCHORS["slot-interview"].x - pageRect.left,
-        y: ANCHORS["slot-interview"].y - pageRect.top
-      };
-    }
-
-    // 4. Board post-drop
-    viewIn.innerHTML = renderBoardView(7.8, { forcePostDrop: true });
-    capture();
-
-    // 5. Entry prep scrolled
-    viewIn.innerHTML = renderEntryPrepView(12.2, { forceScrollSettled: true });
-    capture();
-
-    // 6. Insights
-    viewIn.innerHTML = renderInsightsView(16.8);
-    capture();
-
-    // Reset
-    viewIn.innerHTML = "";
+    view.innerHTML = renderBoardView(CHAPTER.board);
+    capture(view, "card-stripe-applied", "chip-python");
+    view.innerHTML = renderBoardView(CHAPTER.board, { measureDropSlot: true });
+    capture(view, "slot-interview");
+    captureFocus("board");
+    view.innerHTML = renderBoardView(AT.dropStripe + 0.2);
+    captureFocus("board");
+    view.innerHTML = renderBoardView(AT.filterPython);
+    capture(view, "card-stripe-interview");
+    captureFocus("board");
+    view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
+    prepMockHeight = view.querySelector(".demo-mock-card").getBoundingClientRect().height;
+    const fullPrep = focusRect("prep", view);
+    if (!fullPrep) throw new Error("Missing camera focus: prep");
+    FOCUS_SELECTORS.prep = prepSelector(fullPrep);
+    const finalPrep = focusRect("prep", view);
+    if (!finalPrep) throw new Error("Missing settled camera focus: prep");
+    prepScroll = Math.max(0, (finalPrep.top + finalPrep.bottom - VIEW_H) / 2);
+    view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
+    captureFocus("prep");
+    view.innerHTML = renderEntryPrepView(CHAPTER.prep, PREP_HOLD_END);
+    capture(view, "btn-mark-practiced");
+    captureFocus("prep");
+    view.innerHTML = renderEntryPrepView(AT.markPracticed + 0.18, PREP_HOLD_END);
+    captureFocus("prep");
+    view.innerHTML = renderOpeningsView(CHAPTER.openings);
+    captureFocus("openings");
+    view.innerHTML = renderOpeningsView(AT.filterTerm);
+    capture(view, "filter-term", "save-opening", "nav-calendar");
+    view.innerHTML = renderTodayView(AT.openExport, { calendar: true });
+    capture(view, "open-export", "download-calendar", "radar-card");
+    captureFocus("radar", "radar-export", "export");
+    view.innerHTML = renderInsightsView(CHAPTER.insights);
+    capture(view, "funnel-card");
+    captureFocus("funnel");
   }
 
   function pt(name, dx = 0, dy = 0) {
-    const a = ANCHORS[name] || { x: 640, y: 360 };
-    return { x: a.x + dx, y: a.y + dy };
+    const a = ANCHORS[name];
+    return { x: a.x + dx, y: a.y + dy, anchor: name };
   }
 
   function quadBezier(p0, p1, t, arcSign = 1) {
@@ -1048,234 +1331,289 @@ html, body {
     };
   }
 
-  function buildCursorTimeline() {
-    // Each segment: [t0, t1, targetA, targetB, arcSign, type]
-    // Hold segments have same targetA === targetB
-    const rest = { x: 740, y: 380 };
-    const newBtn = pt("nav-new");
-    const qInput = pt("quickfill-input", -30, 0);
-    const qFill = pt("quickfill-fill");
-    const mSave = pt("modal-save");
-    const tabBoard = pt("nav-board");
-    const cardApplied = pt("card-stripe-applied");
-    const slotInterview = pt("slot-interview");
-    const chipPy = pt("chip-python");
-    const cardInterview = pt("card-stripe-interview");
-    const btnMark = pt("btn-mark-practiced");
-    const tabInsights = pt("nav-insights");
-    const funnel = pt("funnel-card", -20, 10);
-    const tabToday = pt("nav-today");
-    const radar = pt("radar-card", 10, -18);
+  const REST = { x: 740, y: 380 };
+  const CLIPPER_READ = { x: 640, y: 455 };
+  const PREP_READ = { x: 625, y: 515 };
+  const OPENINGS_READ = { x: 705, y: 555 };
+  const CALENDAR_READ = { x: 605, y: 500 };
+  let cursorStops;
 
-    return { rest, newBtn, qInput, qFill, mSave, tabBoard, cardApplied, slotInterview, chipPy, cardInterview, btnMark, tabInsights, funnel, tabToday, radar };
+  function buildCursorTimeline() {
+    // Each stop is [arrival, departure, target, cursor, arc direction to next stop].
+    return [
+      [0, 0, REST, "arrow", 1],
+      [AT.newPage - 0.14, AT.newPage + 0.04, pt("nav-new"), "arrow", -1],
+      [AT.focusLink - 0.03, 1.98, pt("quickfill-input", -30), "ibeam", -1],
+      [AT.fill - 0.14, AT.fill + 0.06, pt("quickfill-fill"), "arrow", 1],
+      [3.10, 3.10, CLIPPER_READ, "arrow", 1],
+      [AT.saveStripe - 0.35, AT.saveStripe + 0.06, pt("modal-save"), "arrow", -1],
+      [CHAPTER.board - 0.14, BOARD_APPROACH, pt("nav-board"), "arrow", 1],
+      [AT.grabStripe - 0.25, AT.grabStripe, pt("card-stripe-applied"), "grab", 0],
+      [AT.dropStripe, PYTHON_APPROACH, pt("slot-interview"), "grab", -1],
+      [AT.filterPython - 0.21, AT.filterPython + 0.15, pt("chip-python"), "arrow", 1],
+      [AT.openStripe - 0.27, AT.openStripe + 0.11, pt("card-stripe-interview"), "arrow", -1],
+      [AT.markPracticed - 0.26, AT.markPracticed + 0.1, pt("btn-mark-practiced"), "arrow", 1],
+      [13.5, 14.27, PREP_READ, "arrow", -1],
+      [CHAPTER.openings - 0.18, CHAPTER.openings + 0.19, pt("nav-today"), "arrow", 1],
+      [AT.filterTerm - 0.25, AT.filterTerm + 0.15, pt("filter-term"), "arrow", -1],
+      [AT.saveOpening - 0.25, AT.saveOpening + 0.16, pt("save-opening"), "arrow", 1],
+      [19.0, 19.4, OPENINGS_READ, "arrow", -1],
+      [CHAPTER.calendar - 0.2, CHAPTER.calendar + 0.12, pt("nav-calendar"), "arrow", -1],
+      [AT.openExport - 0.25, AT.openExport + 0.12, pt("open-export"), "arrow", 1],
+      [AT.downloadCalendar - 0.25, AT.downloadCalendar + 0.12, pt("download-calendar"), "arrow", 1],
+      [23.45, 23.95, pt("radar-card", 0, -8), "arrow", -1],
+      [24.05, 24.15, CALENDAR_READ, "arrow", -1],
+      [CHAPTER.insights - 0.2, CHAPTER.insights + 0.18, pt("nav-insights"), "arrow", 1],
+      [26.32, 27.42, pt("funnel-card", -20, 10), "arrow", -1],
+      [28.52, LOOP_END, REST, "arrow", 0]
+    ];
   }
 
-  let C_PTS = null;
+  const CLICKS = [
+    [AT.newPage, "nav-new"], [AT.focusLink, "quickfill-input", -30],
+    [AT.fill, "quickfill-fill"], [AT.saveStripe, "modal-save"],
+    [CHAPTER.board, "nav-board"], [AT.grabStripe, "card-stripe-applied"], [AT.dropStripe, "slot-interview"],
+    [AT.filterPython, "chip-python"], [AT.openStripe, "card-stripe-interview"],
+    [AT.markPracticed, "btn-mark-practiced"], [CHAPTER.openings, "nav-today"],
+    [AT.filterTerm, "filter-term"], [AT.saveOpening, "save-opening"],
+    [CHAPTER.calendar, "nav-calendar"], [AT.openExport, "open-export"],
+    [AT.downloadCalendar, "download-calendar"], [CHAPTER.insights, "nav-insights"]
+  ];
+
   function cursorState(t) {
-    const c = C_PTS;
-    const segs = [
-      [0.00, 0.48, c.rest, c.newBtn, 1, "arrow"],
-      [0.48, 0.66, c.newBtn, c.newBtn, 0, "arrow"],
-      [0.66, 1.05, c.newBtn, c.qInput, -1, "arrow"],
-      [1.05, 1.98, c.qInput, c.qInput, 0, "ibeam"],
-      [1.98, 2.28, c.qInput, c.qFill, -1, "arrow"],
-      [2.28, 2.48, c.qFill, c.qFill, 0, "arrow"],
-      [2.48, 3.10, c.qFill, { x: 640, y: 455 }, 1, "arrow"],
-      [3.10, 3.55, { x: 640, y: 455 }, c.mSave, 1, "arrow"],
-      [3.55, 3.96, c.mSave, c.mSave, 0, "arrow"],
-      [3.96, 4.92, c.mSave, c.tabBoard, -1, "arrow"],
-      [4.92, 5.20, c.tabBoard, c.tabBoard, 0, "arrow"],
-      [5.20, 5.82, c.tabBoard, c.cardApplied, 1, "arrow"],
-      [5.82, 6.10, c.cardApplied, c.cardApplied, 0, "grab"],
-      [6.10, 7.45, c.cardApplied, c.slotInterview, -1, "grabbing"],
-      [7.45, 7.72, c.slotInterview, c.slotInterview, 0, "grab"],
-      [7.72, 8.38, c.slotInterview, c.chipPy, -1, "arrow"],
-      [8.38, 8.72, c.chipPy, c.chipPy, 0, "arrow"],
-      [8.72, 9.65, c.chipPy, c.cardInterview, 1, "arrow"],
-      [9.65, 10.38, c.cardInterview, c.cardInterview, 0, "arrow"],
-      [10.38, 12.15, c.cardInterview, c.btnMark, -1, "arrow"],
-      [12.15, 12.62, c.btnMark, c.btnMark, 0, "arrow"],
-      [12.62, 13.60, c.btnMark, { x: 650, y: 480 }, 1, "arrow"],
-      [13.60, 14.85, { x: 650, y: 480 }, { x: 650, y: 480 }, 0, "arrow"],
-      [14.85, 15.32, { x: 650, y: 480 }, c.tabInsights, -1, "arrow"],
-      [15.32, 15.60, c.tabInsights, c.tabInsights, 0, "arrow"],
-      [15.60, 16.95, c.tabInsights, c.funnel, 1, "arrow"],
-      [16.95, 17.55, c.funnel, c.funnel, 0, "arrow"],
-      [17.55, 17.98, c.funnel, c.tabToday, -1, "arrow"],
-      [17.98, 18.22, c.tabToday, c.tabToday, 0, "arrow"],
-      [18.22, 19.10, c.tabToday, c.radar, 1, "arrow"],
-      [19.10, 19.90, c.radar, c.radar, 0, "arrow"],
-      [19.90, 20.80, c.radar, c.rest, -1, "arrow"]
-    ];
+    const click = CLICKS.find(([time]) => t >= time - 0.06 && t <= time + 0.14);
+    const pressDip = click ? 1 - 0.16 * clamp(t < click[0]
+      ? (t - click[0] + 0.06) / 0.06
+      : 1 - (t - click[0]) / 0.14, 0, 1) : 1;
 
-    const clicks = [0.62, 1.08, 2.42, 3.90, 5.14, 8.65, 10.30, 12.55, 15.50, 18.14];
-    let pressDip = 1;
-    for (const ct of clicks) {
-      if (t >= ct - 0.06 && t <= ct + 0.14) {
-        const dp = t < ct ? (t - (ct - 0.06)) / 0.06 : 1 - (t - ct) / 0.14;
-        pressDip = 1 - 0.16 * clamp(dp, 0, 1);
-      }
+    for (let i = 0; i < cursorStops.length; i++) {
+      const [arrival, departure, pos, kind, sign] = cursorStops[i];
+      if (t >= arrival && t <= departure) return { ...pos, kind, scale: pressDip };
+      const next = cursorStops[i + 1];
+      if (!next || t < departure || t >= next[0]) continue;
+      const p = seg(t, departure, next[0], quintInOut);
+      const dest = next[2];
+      const dragging = departure === AT.grabStripe;
+      const moved = dragging
+        ? { x: lerp(pos.x, dest.x, p), y: lerp(pos.y, dest.y, p) - Math.sin(p * Math.PI) * 26 }
+        : quadBezier(pos, dest, p, sign);
+      return { ...moved, kind: dragging ? "grabbing" : "arrow", scale: pressDip };
     }
-
-    for (const [t0, t1, a, b, sign, kind] of segs) {
-      if (t >= t0 && t <= t1) {
-        if (a === b) return { x: a.x, y: a.y, kind, scale: pressDip };
-        const p = seg(t, t0, t1, quintInOut);
-        const pos = kind === "grabbing"
-          ? { x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p) - Math.sin(p * Math.PI) * 26 }
-          : quadBezier(a, b, p, sign);
-        return { x: pos.x, y: pos.y, kind, scale: pressDip };
-      }
-    }
-    return { x: c.rest.x, y: c.rest.y, kind: "arrow", scale: 1 };
+    return { ...REST, kind: "arrow", scale: 1 };
   }
 
   function activeRipple(t) {
-    const clicks = [
-      [0.62, C_PTS.newBtn],
-      [2.42, C_PTS.qFill],
-      [3.90, C_PTS.mSave],
-      [5.14, C_PTS.tabBoard],
-      [7.45, C_PTS.slotInterview],
-      [8.65, C_PTS.chipPy],
-      [10.30, C_PTS.cardInterview],
-      [12.55, C_PTS.btnMark],
-      [15.50, C_PTS.tabInsights],
-      [18.14, C_PTS.tabToday]
-    ];
-    for (const [ct, ptObj] of clicks) {
-      if (t >= ct && t <= ct + 0.42) {
-        const p = seg(t, ct, ct + 0.42, quintOut);
-        return { x: ptObj.x, y: ptObj.y, scale: 0.45 + p * 1.1, opacity: (1 - p) * 0.9 };
-      }
-    }
-    return null;
+    const click = CLICKS.find(([time]) => t >= time && t < time + 0.42);
+    if (!click) return null;
+    const [time, name, dx] = click;
+    const p = seg(t, time, time + 0.42, quintOut);
+    return { ...pt(name, dx), scale: 0.45 + p * 1.1, opacity: (1 - p) * 0.9 };
   }
 
-  function renderViewForTime(t) {
-    if (t < 5.2) return { id: "today0", html: renderTodayView(t) };
-    if (t < 10.4) return { id: "board", html: renderBoardView(t) };
-    if (t < 15.6) return { id: "prep", html: renderEntryPrepView(t) };
-    if (t < 18.2) return { id: "insights", html: renderInsightsView(t) };
-    // Seamless wrap: crossfade back to exact t=0.0 count during final 0.45s
-    if (t >= 20.35) {
-      return { id: "today0_loop", html: renderTodayView(0, { highlightRadar: false, countOverride: false }) };
-    }
-    return { id: "today1", html: renderTodayView(t, { highlightRadar: t >= 18.3 && t < 20.1, countOverride: true }) };
-  }
-
-  const TRANSITIONS = [
-    { at: 5.20, dur: 0.36, outHtml: (t) => renderTodayView(5.19), inId: "board" },
-    { at: 10.40, dur: 0.36, outHtml: (t) => renderBoardView(10.39), inId: "prep" },
-    { at: 15.60, dur: 0.36, outHtml: (t) => renderEntryPrepView(15.59), inId: "insights" },
-    { at: 18.20, dur: 0.36, outHtml: (t) => renderInsightsView(18.19), inId: "today1" },
-    { at: 20.35, dur: 0.40, outHtml: (t) => renderTodayView(20.34, { highlightRadar: false, countOverride: true }), inId: "today0_loop" }
+  const SCENES = [
+    [CHAPTER.clipper, "today", renderTodayView],
+    [CHAPTER.board, "board", renderBoardView],
+    [CHAPTER.prep, "board", renderEntryPrepView],
+    [CHAPTER.openings, "today", renderOpeningsView],
+    [CHAPTER.calendar, "today", t => renderTodayView(t, { calendar: true })],
+    [CHAPTER.insights, "insights", renderInsightsView]
+  ];
+  const TOASTS = [
+    [stripeSavedAt, 4.95, DEMO.stripe.company + " saved to notebook"],
+    [AT.saveOpening, 19.10, featuredOpening.company + " saved to notebook"],
+    [AT.downloadCalendar, 24.55, "Calendar file with 24 h and 2 h reminders"]
   ];
 
   let lastCursorKind = "";
+  const sceneTime = t => t >= LOOP_END ? 0 : t;
   window.__setDemoTime = function (t) {
+    t = sceneTime(t);
     const viewOut = document.getElementById("demo-view-out");
     const viewIn = document.getElementById("demo-view-in");
-    const navToday = document.getElementById("nav-today");
-    const navBoard = document.getElementById("nav-board");
-    const navInsights = document.getElementById("nav-insights");
     const navNew = document.getElementById("nav-new-btn");
-    const boardCount = document.getElementById("nav-board-count");
     const toast = document.getElementById("demo-toast");
+    const sceneIndex = SCENES.findLastIndex(([start]) => t >= start);
+    const [start, section, render] = SCENES[sceneIndex];
+    const notebook = notebookAt(t);
 
-    [navToday, navBoard, navInsights].forEach(el => {
-      el.removeAttribute("aria-current");
-      el.classList.remove("is-hovered");
-    });
-    navNew.classList.remove("is-hovered");
-
-    // Sidebar state
-    boardCount.textContent = (t >= 4.05 && t < 20.4) ? "11" : "10";
-    if (t < 5.2) {
-      navToday.setAttribute("aria-current", "page");
-      if (t >= 0.42 && t < 0.66) navNew.classList.add("is-hovered");
-      if (t >= 4.85 && t < 5.20) navBoard.classList.add("is-hovered");
-    } else if (t < 15.6) {
-      navBoard.setAttribute("aria-current", "page");
-      if (t >= 15.25 && t < 15.60) navInsights.classList.add("is-hovered");
-    } else if (t < 18.2) {
-      navInsights.setAttribute("aria-current", "page");
-      if (t >= 17.90 && t < 18.20) navToday.classList.add("is-hovered");
-    } else {
-      navToday.setAttribute("aria-current", "page");
+    document.getElementById("nav-board-count").textContent = notebook.active.length;
+    document.getElementById("nav-page-count").textContent = notebook.total;
+    const nextSection = SCENES[sceneIndex + 1];
+    for (const name of ["today", "board", "insights"]) {
+      const tab = document.getElementById("nav-" + name);
+      if (name === section) tab.setAttribute("aria-current", "page");
+      else tab.removeAttribute("aria-current");
+      tab.classList.toggle("is-hovered", name !== section && name === nextSection?.[1] && t >= nextSection[0] - 0.18);
     }
+    navNew.classList.toggle("is-hovered", t >= AT.newPage - 0.14 && t < AT.newPage + 0.04);
 
-    // Dual-layer view crossfade
-    const currentView = renderViewForTime(t);
-    const activeTx = TRANSITIONS.find(tx => t >= tx.at && t < tx.at + tx.dur && currentView.id === tx.inId);
-    if (activeTx) {
-      const p = seg(t, activeTx.at, activeTx.at + activeTx.dur, quintOut);
-      viewOut.style.display = "block";
-      viewOut.innerHTML = activeTx.outHtml(t);
-      viewOut.style.opacity = (1 - p).toFixed(3);
-      viewOut.style.transform = \`translateY(\${(-10 * p).toFixed(1)}px) scale(\${(1 - 0.015 * p).toFixed(4)})\`;
+    const transitionEnd = start + VIEW_TRANSITION_SEC;
+    const isTransitioning = sceneIndex > 0 && t < transitionEnd;
+    const dissolving = t >= AT.dissolve;
+    const progress = dissolving ? seg(t, AT.dissolve, LOOP_END, smoothstep)
+      : isTransitioning ? seg(t, start, transitionEnd, quintOut) : 1;
+    const content = render === renderInsightsView ? render(t, notebook) : render(t);
+    viewOut.style.display = isTransitioning || dissolving ? "block" : "none";
+    viewOut.innerHTML = dissolving ? content
+      : isTransitioning ? SCENES[sceneIndex - 1][2](start - 1 / ${FPS}) : "";
+    viewOut.style.opacity = dissolving ? 1 : 1 - progress;
+    viewOut.style.transform = isTransitioning ? \`translateY(\${-8 * progress}px)\` : "none";
+    viewIn.innerHTML = dissolving ? renderTodayView(0) : content;
+    viewIn.style.opacity = progress;
+    viewIn.style.background = dissolving ? "inherit" : "";
+    viewIn.style.transform = isTransitioning ? \`translateY(\${10 * (1 - progress)}px)\` : "none";
 
-      viewIn.innerHTML = currentView.html;
-      viewIn.style.opacity = p.toFixed(3);
-      viewIn.style.transform = \`translateY(\${(14 * (1 - p)).toFixed(1)}px) scale(\${lerp(0.99, 1, p).toFixed(4)})\`;
-    } else {
-      viewOut.style.display = "none";
-      viewOut.innerHTML = "";
-      viewIn.innerHTML = currentView.html;
-      viewIn.style.opacity = "1";
-      viewIn.style.transform = "none";
+    const camera = document.getElementById("demo-camera");
+    let prepRect;
+    if (start === CHAPTER.prep) {
+      camera.style.transform = "";
+      prepRect = focusRect("prep", viewIn);
     }
-
-    // Toast animation (4.05 -> 5.05)
-    if (t >= 4.05 && t < 5.05) {
-      toast.style.display = "flex";
-      const inP = t < 4.32 ? springOut(t - 4.05, 280, 22) : 1;
-      const outP = t >= 4.78 ? seg(t, 4.78, 5.05, quintOut) : 0;
-      toast.textContent = "Stripe saved to notebook";
-      toast.style.opacity = (clamp(inP * 1.4, 0, 1) * (1 - outP)).toFixed(3);
-      toast.style.transform = \`translateY(\${((1 - inP) * 14 + outP * 10).toFixed(1)}px)\`;
-    } else {
-      toast.style.display = "none";
+    const cam = computeCamera(t, prepRect);
+    const windowBottom = (WIN_TOP + WIN_H) * cam.scale + cam.ty;
+    const footerBottom = windowBottom - (1 + ${SIDEBAR_BOTTOM_PADDING}) * cam.scale;
+    const footerOffset = Math.min(0, (VIEW_H - MARGIN - 1 - footerBottom) / cam.scale);
+    document.getElementById("demo-sidebar-footer").style.transform = \`translateY(\${footerOffset}px)\`;
+    const message = TOASTS.find(([from, until]) => t >= from && t < until);
+    toast.style.display = message ? "flex" : "none";
+    if (message) {
+      const [from, until, label] = message;
+      const rise = springOut(t - from, 280, 22);
+      const fade = seg(t, until - 0.28, until, quintOut);
+      const riseOffset = (1 - rise) * 12;
+      const right = (WIN_LEFT + WIN_W) * cam.scale + cam.tx;
+      if (toast.textContent !== label) toast.textContent = label;
+      toast.style.opacity = clamp(rise * 1.4, 0, 1) * (1 - fade);
+      toast.style.right = \`\${Math.max(20, (right - VIEW_W + MARGIN + 2) / cam.scale)}px\`;
+      toast.style.bottom = \`\${Math.max(20, (windowBottom - VIEW_H + MARGIN + 2) / cam.scale + riseOffset)}px\`;
+      toast.style.transform = \`translateY(\${riseOffset}px)\`;
     }
-
     renderModal(t);
 
-    // Camera transform
-    const cam = computeCamera(t);
-    document.getElementById("demo-camera").style.transform =
-      \`translate(\${cam.tx.toFixed(2)}px, \${cam.ty.toFixed(2)}px) scale(\${cam.scale.toFixed(4)})\`;
+    const squareCorners = seg(cam.scale, 1.04, ${ZOOM_COVER_THRESHOLD}, smoothstep);
+    document.getElementById("demo-window").style.borderRadius = \`\${16 * (1 - squareCorners)}px\`;
+    camera.style.transform =
+      \`translate(\${cam.tx.toFixed(3)}px, \${cam.ty.toFixed(3)}px) scale(\${cam.scale.toFixed(5)})\`;
 
-    // Cursor mapped through exact active camera transform so it stays crisp and pixel-accurate
     const cur = cursorState(t);
-    const screenX = cur.x * cam.scale + cam.tx;
-    const screenY = cur.y * cam.scale + cam.ty;
-    const cursorEl = document.getElementById("demo-cursor");
-    const spec = CURSORS[cur.kind] || CURSORS.arrow;
+    const cursor = document.getElementById("demo-cursor");
+    const spec = CURSORS[cur.kind];
+    const [hx, hy] = spec.hotspot;
     if (cur.kind !== lastCursorKind) {
-      cursorEl.innerHTML = spec.svg;
-      cursorEl.style.transformOrigin = \`\${spec.hotspot[0]}px \${spec.hotspot[1]}px\`;
+      cursor.innerHTML = spec.svg;
+      cursor.style.transformOrigin = \`\${hx}px \${hy}px\`;
       lastCursorKind = cur.kind;
     }
-    cursorEl.style.transform = \`translate(\${(screenX - spec.hotspot[0]).toFixed(2)}px, \${(screenY - spec.hotspot[1]).toFixed(2)}px) scale(\${cur.scale.toFixed(3)})\`;
+    cursor.style.transform = \`translate(\${cur.x * cam.scale + cam.tx - hx}px, \${cur.y * cam.scale + cam.ty - hy}px) scale(\${cur.scale})\`;
 
-    // Ripple mapped through camera transform
     const rip = activeRipple(t);
-    const rippleEl = document.getElementById("demo-ripple");
+    const ripple = document.getElementById("demo-ripple");
+    ripple.style.display = rip ? "block" : "none";
     if (rip) {
-      const rx = rip.x * cam.scale + cam.tx;
-      const ry = rip.y * cam.scale + cam.ty;
-      rippleEl.style.display = "block";
-      rippleEl.style.left = \`\${rx.toFixed(1)}px\`;
-      rippleEl.style.top = \`\${ry.toFixed(1)}px\`;
-      rippleEl.style.transform = \`scale(\${rip.scale.toFixed(3)})\`;
-      rippleEl.style.opacity = rip.opacity.toFixed(3);
-    } else {
-      rippleEl.style.display = "none";
+      ripple.style.left = \`\${rip.x * cam.scale + cam.tx}px\`;
+      ripple.style.top = \`\${rip.y * cam.scale + cam.ty}px\`;
+      ripple.style.transform = \`scale(\${rip.scale})\`;
+      ripple.style.opacity = rip.opacity;
     }
+
+    return cam;
+  };
+
+  const stageBounds = { left: 0, top: 0, right: VIEW_W, bottom: VIEW_H };
+  const visible = el => el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  const edgeMargin = (outer, inner) => Math.min(
+    inner.left - outer.left, inner.top - outer.top, outer.right - inner.right, outer.bottom - inner.bottom
+  );
+
+  function partiallyClipped(rect) {
+    return Math.min(rect.right, VIEW_W) > Math.max(rect.left, 0) &&
+      Math.min(rect.bottom, VIEW_H) > Math.max(rect.top, 0) &&
+      edgeMargin(stageBounds, rect) < -0.01;
+  }
+
+  function anchorMargin(name, cam, win) {
+    const matches = [...win.querySelectorAll('[data-anchor="' + name + '"]')].filter(visible);
+    if (!matches.length) {
+      const a = ANCHORS[name];
+      const left = a.left * cam.scale + cam.tx;
+      const top = a.top * cam.scale + cam.ty;
+      return edgeMargin(stageBounds, {
+        left, top, right: left + a.width * cam.scale, bottom: top + a.height * cam.scale
+      }) - MARGIN;
+    }
+
+    return Math.min(...matches.map(el => {
+      const r = el.getBoundingClientRect();
+      const margins = [edgeMargin(stageBounds, r) - MARGIN];
+      for (const selector of [".board", ".demo-view-layer"]) {
+        const viewport = el.closest(selector);
+        if (viewport) margins.push(edgeMargin(viewport.getBoundingClientRect(), r));
+      }
+      return Math.min(...margins);
+    }));
+  }
+
+  window.__auditFrame = function (t) {
+    const cam = window.__setDemoTime(t);
+    const time = sceneTime(t);
+    const windowEl = document.getElementById("demo-window");
+    const win = windowEl.getBoundingClientRect();
+    const focus = cam.focus === "overview" ? win : focusRect(cam.focus, windowEl);
+    const toast = document.getElementById("demo-toast");
+    const sidebar = windowEl.querySelector(".cover").getBoundingClientRect();
+    const sidebarMargin = Math.max(sidebar.left + 12 * cam.scale, cam.scale - sidebar.right);
+    const toastMargin = visible(toast) ? edgeMargin(stageBounds, toast.getBoundingClientRect()) : null;
+    const textElements = windowEl.querySelectorAll(
+      "h1, h2, .view-title, .card-title, .view-sub, .card-note, .prep-sub, .eyebrow, " + BRAND_TEXT +
+      ", .storage-chip, .filter-chip, button, kbd, .kpi :is(p, strong, span), .strip-figure, .strip-rate, .ring-label > *, .demo-toast, " +
+      ".demo-board-view .app-card :is(.app-company, .app-role, .app-meta span, .chip, .demo-history-stamp)"
+    );
+    const slicedText = [...textElements]
+      .filter(el => visible(el) && partiallyClipped(el.getBoundingClientRect()))
+      .map(el => el.textContent.trim().replace(/\s+/g, " "));
+
+    const upcoming = new Set(cursorStops
+      .filter(([arrival, departure, pos]) => pos.anchor && departure >= time && arrival <= time + 0.5)
+      .map(([, , pos]) => pos.anchor));
+    const margins = [...upcoming].map(name => [name, anchorMargin(name, cam, windowEl)]);
+    const clippedAnchors = margins.filter(([, margin]) => margin < 0).map(([name]) => name);
+    const cursorMargin = margins.length ? Math.min(...margins.map(([, margin]) => margin)) : null;
+
+    let boardMargin = null;
+    if (time >= BOARD_APPROACH && time < AT.grabStripe) {
+      const board = windowEl.querySelector(".board");
+      const viewport = board?.getBoundingClientRect();
+      const applied = board?.querySelector(".column.st-APPLIED");
+      const card = applied?.querySelector('[data-anchor="card-stripe-applied"]');
+      if (!applied || !card) clippedAnchors.push("card-stripe-applied");
+      else boardMargin = Math.min(
+        edgeMargin(viewport, applied.getBoundingClientRect()),
+        edgeMargin(viewport, card.getBoundingClientRect())
+      );
+    }
+
+    const visibleWidth = Math.max(0, Math.min(win.right, VIEW_W) - Math.max(win.left, 0));
+    const visibleHeight = Math.max(0, Math.min(win.bottom, VIEW_H) - Math.max(win.top, 0));
+    const visibleArea = visibleWidth * visibleHeight;
+    return {
+      scale: cam.scale,
+      focus: cam.focus,
+      focusMargin: focus ? edgeMargin(stageBounds, focus) : null,
+      windowVisibleRatio: visibleArea / (win.width * win.height),
+      emptyRatio: 1 - visibleArea / (VIEW_W * VIEW_H),
+      sidebarMargin,
+      toastMargin,
+      cursorMargin,
+      boardMargin,
+      slicedText,
+      clippedAnchors
+    };
   };
 
   measureAnchors();
-  C_PTS = buildCursorTimeline();
+  cameraPoses = cameraKeyPoses();
+  window.__cameraKeys = cameraPoses.map(({ time, scale, focus, fit }) => ({ time, scale, focus, fit }));
+  cursorStops = buildCursorTimeline();
   window.__setDemoTime(0);
 })();
 </script>
@@ -1283,87 +1621,56 @@ html, body {
 </html>`;
 }
 
-function encodeWebm(ffmpegBin, frameBuffers, framesDir, outPath) {
-  const mjpegBuffer = Buffer.concat(frameBuffers);
-  const passLog = path.join(framesDir, "vpx_2pass");
-  const webmTargetCap = 1200 * 1024;
-  const profiles = [
-    { outFps: FPS, kbps: 360, max: 480, gop: 240, lag: 25 },
-    { outFps: 30, kbps: 360, max: 480, gop: 120, lag: 20 },
-    { outFps: 30, kbps: 300, max: 400, gop: 120, lag: 20 }
-  ];
-
-  for (const { outFps, kbps, max, gop, lag } of profiles) {
-    const commonArgs = [
-      "-y",
-      "-f", "image2pipe",
-      "-framerate", String(FPS),
-      "-vcodec", "mjpeg",
-      "-i", "pipe:0",
-      "-vf", `scale=${OUT_WIDTH}:${OUT_HEIGHT}:flags=lanczos`,
-      "-r", String(outFps),
-      "-c:v", "libvpx",
-      "-b:v", `${kbps}k`,
-      "-minrate", "100k",
-      "-maxrate", `${max}k`,
-      "-bufsize", "700k",
-      "-qmin", "10",
-      "-qmax", "63",
-      "-g", String(gop),
-      "-pix_fmt", "yuv420p",
-      "-deadline", "good",
-      "-cpu-used", "2",
-      "-auto-alt-ref", "1",
-      "-lag-in-frames", String(lag),
-      "-passlogfile", passLog
-    ];
-    const pass1 = spawnSync(
-      ffmpegBin,
-      [...commonArgs, "-pass", "1", "-f", "webm", "/dev/null"],
-      { input: mjpegBuffer, maxBuffer: 64 * 1024 * 1024 }
-    );
-    if (pass1.status !== 0) {
-      throw new Error(`ffmpeg WebM pass 1 failed: ${pass1.stderr?.toString()}`);
-    }
-    const pass2 = spawnSync(
-      ffmpegBin,
-      [...commonArgs, "-pass", "2", "-f", "webm", outPath],
-      { input: mjpegBuffer, maxBuffer: 64 * 1024 * 1024 }
-    );
-    if (pass2.status !== 0) {
-      throw new Error(`ffmpeg WebM pass 2 failed: ${pass2.stderr?.toString()}`);
-    }
-    const size = fs.statSync(outPath).size;
-    console.log(`WebM 2-pass ${outFps}fps bitrate=${kbps}k -> ${size} bytes`);
-    if (size >= MIN_VIDEO_BYTES && size <= webmTargetCap) {
-      return size;
-    }
+function runEncoder(bin, args, label) {
+  const result = spawnSync(bin, args, { encoding: "utf8", stdio: ["ignore", "ignore", "pipe"] });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(label + " failed (" + (result.signal || result.status) + "): " + result.stderr.trim());
   }
-  const finalSize = fs.statSync(outPath).size;
-  if (finalSize > MAX_VIDEO_BYTES) {
-    throw new Error(`WebM exceeded ${MAX_VIDEO_BYTES} bytes (${finalSize} bytes)`);
-  }
-  return finalSize;
 }
 
-function encodeMp4WithSwift(frameBuffers, framesDir, outPath) {
+function encodeWebm(ffmpegBin, framesPath, outPath) {
+  const passLog = path.join(path.dirname(framesPath), "vpx_2pass");
+  for (const kbps of BITRATES) {
+    const args = [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "image2pipe", "-vcodec", "mjpeg", "-r", String(FPS), "-i", framesPath,
+      "-vf", `scale=${OUT_WIDTH}:${OUT_HEIGHT}:flags=lanczos`,
+      "-c:v", "libvpx", "-b:v", `${kbps}k`,
+      "-force_key_frames", String(LOOP_REST_START),
+      "-g", String(FPS), "-pix_fmt", "yuv420p",
+      "-deadline", "good", "-cpu-used", "2", "-auto-alt-ref", "1", "-lag-in-frames", "25",
+      "-passlogfile", passLog
+    ];
+    runEncoder(ffmpegBin, [...args, "-pass", "1", "-f", "webm", "/dev/null"], "WebM pass 1");
+    runEncoder(ffmpegBin, [...args, "-pass", "2", "-f", "webm", outPath], "WebM pass 2");
+    const size = fs.statSync(outPath).size;
+    if (size > 0 && size <= MAX_VIDEO_BYTES) return size;
+  }
+  throw new Error("WebM did not meet the 5 MB limit at any target bitrate");
+}
+
+function encodeMp4WithSwift(framesPath, offsets, outPath) {
+  const framesDir = path.dirname(framesPath);
   const swiftScript = path.join(framesDir, "encode_mp4.swift");
+  const offsetsPath = path.join(framesDir, "offsets.json");
   const swiftSource = `
 import AVFoundation
+import CoreGraphics
 import CoreVideo
 import Foundation
 import ImageIO
 
 let args = CommandLine.arguments
-let outPath = args[1]
-let frameCount = Int(args[2])!
-let fps = Int32(args[3])!
+let frames = try FileHandle(forReadingFrom: URL(fileURLWithPath: args[1]))
+defer { try? frames.close() }
+let offsetsData = try Data(contentsOf: URL(fileURLWithPath: args[2]))
+let offsets = try JSONDecoder().decode([UInt64].self, from: offsetsData)
+let outURL = URL(fileURLWithPath: args[3])
 let bitrate = Int(args[4])!
+let fps: Int32 = ${FPS}
 let outWidth = ${OUT_WIDTH}
 let outHeight = ${OUT_HEIGHT}
-
-let outURL = URL(fileURLWithPath: outPath)
-try? FileManager.default.removeItem(at: outURL)
 
 let writer = try AVAssetWriter(outputURL: outURL, fileType: .mp4)
 writer.shouldOptimizeForNetworkUse = true
@@ -1374,11 +1681,11 @@ let settings: [String: Any] = [
   AVVideoHeightKey: outHeight,
   AVVideoCompressionPropertiesKey: [
     AVVideoAverageBitRateKey: bitrate,
-    AVVideoMaxKeyFrameIntervalKey: 180,
+    AVVideoMaxKeyFrameIntervalKey: 60,
+    AVVideoExpectedSourceFrameRateKey: fps,
     AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
   ]
 ]
-
 let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
 input.expectsMediaDataInRealTime = false
 
@@ -1388,189 +1695,232 @@ let attrs: [String: Any] = [
   kCVPixelBufferHeightKey as String: outHeight
 ]
 let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: attrs)
-
 guard writer.canAdd(input) else { fatalError("Cannot add AVAssetWriterInput") }
 writer.add(input)
-writer.startWriting()
+guard writer.startWriting() else { fatalError("Cannot start writing: \\(String(describing: writer.error))") }
 writer.startSession(atSourceTime: .zero)
 
-func readExact(_ count: Int) -> Data? {
-  var buf = Data()
-  buf.reserveCapacity(count)
-  while buf.count < count {
-    let chunk = FileHandle.standardInput.readData(ofLength: count - buf.count)
-    if chunk.isEmpty { return nil }
-    buf.append(chunk)
-  }
-  return buf
-}
-
-func pixelBuffer(from jpegData: Data, pool: CVPixelBufferPool?) -> CVPixelBuffer? {
+func pixelBuffer(from jpegData: Data, pool: CVPixelBufferPool) -> CVPixelBuffer? {
   guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil),
         let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
   var buffer: CVPixelBuffer?
-  if let pool = pool {
-    CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-  } else {
-    CVPixelBufferCreate(nil, outWidth, outHeight, kCVPixelFormatType_32ARGB, attrs as CFDictionary, &buffer)
-  }
-  guard let pb = buffer else { return nil }
-  CVPixelBufferLockBaseAddress(pb, [])
-  let data = CVPixelBufferGetBaseAddress(pb)
-  let colorSpace = CGColorSpaceCreateDeviceRGB()
-  if let ctx = CGContext(
-    data: data,
+  guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess,
+        let pb = buffer, CVPixelBufferLockBaseAddress(pb, []) == kCVReturnSuccess else { return nil }
+  defer { CVPixelBufferUnlockBaseAddress(pb, []) }
+  guard let ctx = CGContext(
+    data: CVPixelBufferGetBaseAddress(pb),
     width: outWidth,
     height: outHeight,
     bitsPerComponent: 8,
     bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
-    space: colorSpace,
+    space: CGColorSpaceCreateDeviceRGB(),
     bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
-  ) {
-    ctx.interpolationQuality = CGInterpolationQuality.high
-    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: outWidth, height: outHeight))
-  }
-  CVPixelBufferUnlockBaseAddress(pb, [])
+  ) else { return nil }
+  ctx.interpolationQuality = .high
+  ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: outWidth, height: outHeight))
   return pb
 }
 
+let frameCount = offsets.count - 1
+guard frameCount > 0, offsets.first == 0, let pool = adaptor.pixelBufferPool else {
+  fatalError("Invalid frame offsets or missing pixel buffer pool")
+}
 for i in 0..<frameCount {
-  guard let lenData = readExact(4), lenData.count == 4 else {
-    fatalError("Unexpected EOF reading frame length \\(i)")
+  try autoreleasepool {
+    try frames.seek(toOffset: offsets[i])
+    let count = Int(offsets[i + 1] - offsets[i])
+    guard let jpeg = try frames.read(upToCount: count), jpeg.count == count,
+          let buffer = pixelBuffer(from: jpeg, pool: pool) else {
+      fatalError("Cannot decode frame \\(i)")
+    }
+    while !input.isReadyForMoreMediaData {
+      guard writer.status == .writing else { fatalError("Writer stopped: \\(String(describing: writer.error))") }
+      Thread.sleep(forTimeInterval: 0.005)
+    }
+    let pts = CMTime(value: CMTimeValue(i), timescale: fps)
+    guard adaptor.append(buffer, withPresentationTime: pts) else {
+      fatalError("Cannot append frame \\(i): \\(String(describing: writer.error))")
+    }
   }
-  let frameLen = lenData.withUnsafeBytes { Int($0.load(as: UInt32.self).bigEndian) }
-  guard let jpegData = readExact(frameLen) else {
-    fatalError("Unexpected EOF reading frame data \\(i)")
-  }
-  while !input.isReadyForMoreMediaData {
-    Thread.sleep(forTimeInterval: 0.005)
-  }
-  guard let pb = pixelBuffer(from: jpegData, pool: adaptor.pixelBufferPool) else {
-    fatalError("Failed to decode frame \\(i)")
-  }
-  let pts = CMTime(value: CMTimeValue(i), timescale: fps)
-  adaptor.append(pb, withPresentationTime: pts)
 }
 
+writer.endSession(atSourceTime: CMTime(value: CMTimeValue(frameCount), timescale: fps))
 input.markAsFinished()
-let sema = DispatchSemaphore(value: 0)
-writer.finishWriting { sema.signal() }
-sema.wait()
-if writer.status != .completed {
-  fatalError("AVAssetWriter failed: \\(String(describing: writer.error))")
-}
+let finished = DispatchSemaphore(value: 0)
+writer.finishWriting { finished.signal() }
+finished.wait()
+guard writer.status == .completed else { fatalError("MP4 write failed: \\(String(describing: writer.error))") }
 `;
   fs.writeFileSync(swiftScript, swiftSource);
+  fs.writeFileSync(offsetsPath, JSON.stringify(offsets));
 
-  const chunks = [];
-  for (const buf of frameBuffers) {
-    const hdr = Buffer.allocUnsafe(4);
-    hdr.writeUInt32BE(buf.length, 0);
-    chunks.push(hdr, buf);
+  for (const kbps of BITRATES) {
+    fs.rmSync(outPath, { force: true });
+    runEncoder("/usr/bin/swift", [swiftScript, framesPath, offsetsPath, outPath, String(kbps * 1000)], "MP4 encoding");
+    const size = fs.statSync(outPath).size;
+    if (size > 0 && size <= MAX_VIDEO_BYTES) return size;
   }
-  const packedFrames = Buffer.concat(chunks);
-
-  const tempOut = path.join(framesDir, "temp_out.mp4");
-  const bitrates = [340_000, 290_000, 250_000];
-  for (const bps of bitrates) {
-    const res = spawnSync(
-      "/usr/bin/swift",
-      [swiftScript, tempOut, String(TOTAL_FRAMES), String(FPS), String(bps)],
-      { input: packedFrames, maxBuffer: 64 * 1024 * 1024 }
-    );
-    if (res.status !== 0) {
-      throw new Error(`Swift MP4 encoding failed: ${res.stderr?.toString()}`);
-    }
-    const size = fs.statSync(tempOut).size;
-    console.log(`MP4 bitrate=${bps} -> ${size} bytes`);
-    if (size >= MIN_VIDEO_BYTES && size <= MAX_VIDEO_BYTES) {
-      fs.copyFileSync(tempOut, outPath);
-      return size;
-    }
-  }
-  const finalSize = fs.statSync(tempOut).size;
-  if (finalSize > MAX_VIDEO_BYTES) {
-    throw new Error(`MP4 exceeded ${MAX_VIDEO_BYTES} bytes (${finalSize} bytes)`);
-  }
-  fs.copyFileSync(tempOut, outPath);
-  return finalSize;
+  throw new Error("MP4 did not meet the 5 MB limit at any target bitrate");
 }
 
 function checkMp4Faststart(mp4Path) {
-  const buf = fs.readFileSync(mp4Path);
-  const moovIdx = buf.indexOf(Buffer.from("moov"));
-  const mdatIdx = buf.indexOf(Buffer.from("mdat"));
-  return { moovIdx, mdatIdx, faststart: moovIdx !== -1 && mdatIdx !== -1 && moovIdx < mdatIdx };
-}
-
-async function main() {
-  fs.mkdirSync(MEDIA_DIR, { recursive: true });
-  const appCss = fs.readFileSync(STYLES_PATH, "utf8");
-  const ffmpegBin = findFfmpeg();
-
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-tour-frames-"));
-
-  const browser = await chromium.launch({ headless: true });
+  const fd = fs.openSync(mp4Path, "r");
   try {
-    const sceneHtml = buildSceneHtml(appCss);
-    const context = await browser.newContext({
-      viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
-      deviceScaleFactor: DEVICE_SCALE_FACTOR
-    });
-    const page = await context.newPage();
-    await page.setContent(sceneHtml, { waitUntil: "load" });
-
-    const frameBuffers = [];
-    for (let i = 0; i < TOTAL_FRAMES; i++) {
-      const t = i / FPS;
-      await page.evaluate(time => window.__setDemoTime(time), t);
-      frameBuffers.push(await page.screenshot({ type: "jpeg", quality: 84 }));
+    const size = fs.fstatSync(fd).size;
+    const header = Buffer.alloc(16);
+    let sawMovie = false;
+    for (let offset = 0; offset + 8 <= size;) {
+      const read = fs.readSync(fd, header, 0, header.length, offset);
+      if (read < 8) return false;
+      const length = header.readUInt32BE(0);
+      const atom = header.toString("ascii", 4, 8);
+      const atomSize = length === 1 && read === 16 ? Number(header.readBigUInt64BE(8)) : length || size - offset;
+      if (atomSize < (length === 1 ? 16 : 8) || offset + atomSize > size) return false;
+      if (atom === "mdat") return sawMovie;
+      if (atom === "moov") sawMovie = true;
+      offset += atomSize;
     }
-
-    // Export crisp 1280x720 poster from the autofilled Stripe modal frame (t = 3.55s)
-    const posterPath = path.join(MEDIA_DIR, "demo-tour-poster.jpg");
-    const posterContext = await browser.newContext({
-      viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
-      deviceScaleFactor: 1
-    });
-    try {
-      const posterPage = await posterContext.newPage();
-      await posterPage.setContent(sceneHtml, { waitUntil: "load" });
-      await posterPage.evaluate(() => window.__setDemoTime(3.55));
-      await posterPage.screenshot({ path: posterPath, type: "jpeg", quality: 90 });
-    } finally {
-      await posterContext.close();
-    }
-
-    const mp4Path = path.join(MEDIA_DIR, "demo-tour.mp4");
-    const webmPath = path.join(MEDIA_DIR, "demo-tour.webm");
-
-    const webmBytes = encodeWebm(ffmpegBin, frameBuffers, tempDir, webmPath);
-    const mp4Bytes = encodeMp4WithSwift(frameBuffers, tempDir, mp4Path);
-    const posterBytes = fs.statSync(posterPath).size;
-    const faststart = checkMp4Faststart(mp4Path);
-
-    console.log(JSON.stringify({
-      frames: TOTAL_FRAMES,
-      fps: FPS,
-      durationSec: DURATION_SEC,
-      resolution: `${OUT_WIDTH}x${OUT_HEIGHT}`,
-      posterBytes,
-      mp4Bytes,
-      webmBytes,
-      faststart
-    }, null, 2));
-
-    if (!faststart.faststart) {
-      throw new Error("MP4 is not faststart (moov atom must precede mdat)");
-    }
+    return false;
   } finally {
-    await browser.close();
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.closeSync(fd);
   }
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
+async function openScene(browser, sceneHtml, deviceScaleFactor) {
+  const context = await browser.newContext({
+    viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+    deviceScaleFactor
+  });
+  const page = await context.newPage();
+  let sceneError;
+  page.on("pageerror", error => { sceneError ??= error; });
+  await page.setContent(sceneHtml, { waitUntil: "load" });
+  if (sceneError) throw sceneError;
+  return page;
+}
+
+async function frameReport(page, frame) {
+  const t = frame / FPS;
+  const result = await page.evaluate(time => window.__auditFrame(time), t);
+  return { frame, t, ...result };
+}
+
+const FRAMING_RULES = {
+  focus: frame => (frame.focusMargin ?? -Infinity) - FOCUS_MARGIN,
+  zoomedBackdrop: frame => frame.scale > ZOOM_COVER_THRESHOLD ? -frame.emptyRatio : null,
+  overviewWindow: frame => frame.scale <= 1.11 ? frame.windowVisibleRatio - 1 + 1e-9 : null,
+  sidebar: frame => frame.sidebarMargin,
+  toast: frame => frame.toastMargin === null ? null : frame.toastMargin - FRAME_MARGIN,
+  slicedText: frame => -frame.slicedText.length,
+  cursor: frame => frame.clippedAnchors.length ? Math.min(frame.cursorMargin ?? 0, -0.01) : frame.cursorMargin,
+  boardViewport: frame => frame.boardMargin === null ? null : frame.boardMargin + 0.01
+};
+
+function failsFraming(frame) {
+  return Object.values(FRAMING_RULES).some(clearance => {
+    const value = clearance(frame);
+    return value !== null && value < 0;
+  });
+}
+
+async function auditFrames(page) {
+  const cameraKeys = await page.evaluate(() => window.__cameraKeys);
+  const frames = [];
+  for (let i = 0; i < TOTAL_FRAMES; i++) frames.push(await frameReport(page, i));
+  const failures = frames.filter(failsFraming);
+  const worst = Object.fromEntries(Object.entries(FRAMING_RULES).map(([name, clearance]) => [
+    name,
+    frames.filter(frame => clearance(frame) !== null)
+      .sort((a, b) => clearance(a) - clearance(b)).slice(0, 5)
+  ]));
+  console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, cameraKeys, worst }, null, 2));
+  if (failures.length) throw new Error(`Framing audit failed on ${failures.length} frames`);
+}
+
+async function captureFrames(page, framesPath) {
+  const offsets = [0];
+  const fd = fs.openSync(framesPath, "wx");
+  try {
+    for (let i = 0; i < TOTAL_FRAMES; i++) {
+      const report = await frameReport(page, i);
+      if (failsFraming(report)) throw new Error(`Framing audit failed: ${JSON.stringify(report)}`);
+      const jpeg = await page.screenshot({ type: "jpeg", quality: 90 });
+      for (let written = 0; written < jpeg.length;) {
+        const size = fs.writeSync(fd, jpeg, written, jpeg.length - written);
+        if (!size) throw new Error(`Could not write frame ${i}`);
+        written += size;
+      }
+      offsets.push(offsets.at(-1) + jpeg.length);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return offsets;
+}
+
+async function capturePoster(browser, sceneHtml, posterPath) {
+  const page = await openScene(browser, sceneHtml, 1);
+  try {
+    await page.evaluate(time => window.__setDemoTime(time), POSTER_TIME);
+    for (const quality of [90, 85, 80]) {
+      const jpeg = await page.screenshot({ type: "jpeg", quality });
+      if (jpeg.length >= MAX_POSTER_BYTES) continue;
+      fs.writeFileSync(posterPath, jpeg);
+      return jpeg.length;
+    }
+    throw new Error("Poster did not meet the 200 KB limit");
+  } finally {
+    await page.context().close();
+  }
+}
+
+async function main() {
+  const audit = process.argv.includes("--audit");
+  const sceneHtml = buildSceneHtml(fs.readFileSync(STYLES_PATH, "utf8"));
+  const ffmpegBin = audit ? null : findFfmpeg();
+  let browser = await chromium.launch({ headless: true });
+  let tempDir;
+  try {
+    const page = await openScene(browser, sceneHtml, DEVICE_SCALE_FACTOR);
+    if (audit) {
+      await auditFrames(page);
+      return;
+    }
+
+    fs.mkdirSync(MEDIA_DIR, { recursive: true });
+    tempDir = fs.mkdtempSync(path.join(MEDIA_DIR, ".demo-tour-"));
+    const framesPath = path.join(tempDir, "frames.mjpeg");
+    const offsets = await captureFrames(page, framesPath);
+    await page.context().close();
+
+    const posterName = "demo-tour-poster.jpg";
+    const webmName = "demo-tour.webm";
+    const mp4Name = "demo-tour.mp4";
+    const posterBytes = await capturePoster(browser, sceneHtml, path.join(tempDir, posterName));
+    await browser.close();
+    browser = null;
+    const webmBytes = encodeWebm(ffmpegBin, framesPath, path.join(tempDir, webmName));
+    const mp4Path = path.join(tempDir, mp4Name);
+    const mp4Bytes = encodeMp4WithSwift(framesPath, offsets, mp4Path);
+    const faststart = checkMp4Faststart(mp4Path);
+    if (!faststart) throw new Error("MP4 moov atom must precede mdat");
+
+    for (const name of [posterName, webmName, mp4Name]) {
+      fs.renameSync(path.join(tempDir, name), path.join(MEDIA_DIR, name));
+    }
+    console.log(JSON.stringify({
+      frames: TOTAL_FRAMES, fps: FPS, durationSec: DURATION_SEC, mp4Bytes, webmBytes, posterBytes, faststart
+    }, null, 2));
+  } finally {
+    try {
+      await browser?.close();
+    } finally {
+      if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
 });
