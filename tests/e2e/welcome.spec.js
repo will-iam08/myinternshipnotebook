@@ -3,6 +3,7 @@
 // Hero 16:9 demo video + H1/subhead character budgets, 6 value-ordered Features with annotated visuals,
 // Signup validation + password strength + Sign In mode + 2-second animated redirect, responsive breakpoints
 // (360px, 768px, 1024px, 1440px, 1920px), semantic landmarks, and <3MB total page weight budget.
+import { statSync } from "node:fs";
 import { expect, test } from "./fixtures.js";
 import { openApp, openWelcome, savedNotebook, savedPrefs, seedNotebook, seedStarted } from "./helpers.js";
 
@@ -162,7 +163,7 @@ test.describe("vertical scroll order and semantic landmarks", () => {
 });
 
 test.describe("1. Hero section", () => {
-  test("fills viewport height, displays <=60 char H1 and <=180 char value prop, and embeds 16:9 autoplay muted loop video with poster", async ({ page }) => {
+  test("fills viewport height, displays <=60 char H1 and <=180 char value prop, and embeds a 16:9 muted loop video that starts after the page has loaded", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWelcome(page);
 
@@ -182,9 +183,14 @@ test.describe("1. Hero section", () => {
 
     const video = hero.locator("video#hero-video");
     await expect(video).toHaveAttribute("poster", "media/demo-tour-poster.jpg");
-    for (const attr of ["autoplay", "muted", "loop", "playsinline"]) {
+    for (const attr of ["muted", "loop", "playsinline"]) {
       await expect(video).toHaveAttribute(attr, "");
     }
+    // The film loads only after the page has: no autoplay attribute and nothing preloaded.
+    await expect(video).not.toHaveAttribute("autoplay", /.*/);
+    await expect(video).toHaveAttribute("preload", "none");
+    await page.waitForFunction(() => document.readyState === "complete");
+    await expect.poll(() => video.evaluate(el => !el.paused), { timeout: 8000 }).toBe(true);
 
     const sources = await video.locator("source").evaluateAll(els =>
       els.map(el => ({ src: el.getAttribute("src"), type: el.getAttribute("type") }))
@@ -216,17 +222,17 @@ test.describe("1. Hero section", () => {
 
     const video = page.locator("video#hero-video");
     const pills = page.locator(".hero-workflow-pills .hero-workflow-pill");
-    await expect(pills).toHaveCount(4);
+    await expect(pills).toHaveCount(6);
 
     await page.waitForFunction(() => {
       const el = document.getElementById("hero-video");
       return Boolean(el && el.readyState >= 1);
     });
 
-    const expectedTimes = [0, 4.5, 9, 13.5];
+    const expectedTimes = [0, 5, 10, 15, 20, 25];
     for (let index = expectedTimes.length - 1; index >= 0; index--) {
       await pills.nth(index).click();
-      // Read the position straight after the click: the clip keeps playing and loops at about 17s,
+      // Read the position straight after the click: the clip keeps playing and loops at 30s,
       // so on a slow run the checks below could otherwise let it wrap past the end back to 0.
       const currentTime = await video.evaluate(el => el.currentTime);
       expect(Math.abs(currentTime - expectedTimes[index])).toBeLessThan(1.0);
@@ -242,18 +248,37 @@ test.describe("1. Hero section", () => {
     // Verify timeupdate keeps the active chapter pill in sync with playback position
     await video.evaluate(el => {
       el.pause();
-      el.currentTime = 10.2;
+      el.currentTime = 11.5;
       el.dispatchEvent(new Event("timeupdate"));
     });
     await expect(pills.nth(2)).toHaveAttribute("aria-pressed", "true");
     await expect(pills.nth(2)).toHaveClass(/is-active/);
 
     await video.evaluate(el => {
-      el.currentTime = 14.5;
+      el.currentTime = 26;
       el.dispatchEvent(new Event("timeupdate"));
     });
-    await expect(pills.nth(3)).toHaveAttribute("aria-pressed", "true");
+    await expect(pills.nth(5)).toHaveAttribute("aria-pressed", "true");
     await expect(pills.nth(2)).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("with reduced motion the film never starts on its own and the poster stays", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await openWelcome(page);
+    await page.waitForFunction(() => document.readyState === "complete");
+    await page.waitForTimeout(800);
+    const video = page.locator("video#hero-video");
+    expect(await video.evaluate(el => el.paused)).toBe(true);
+    await expect(video).toHaveAttribute("poster", "media/demo-tour-poster.jpg");
+  });
+
+  test("a chapter clicked before the film has started still opens that chapter", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWelcome(page);
+    await page.locator(".hero-workflow-pills .hero-workflow-pill").nth(3).click();
+    const video = page.locator("video#hero-video");
+    await expect.poll(() => video.evaluate(el => el.currentTime), { timeout: 8000 }).toBeGreaterThan(14);
+    expect(await video.evaluate(el => el.currentTime)).toBeLessThan(17);
   });
 });
 
@@ -422,6 +447,8 @@ test.describe("responsive breakpoints, typography, and performance budget", () =
         if (url.origin !== new URL(page.url() || "http://localhost").origin && response.request().resourceType() === "script") {
           thirdPartyScripts.push(response.url());
         }
+        // The film loads after the page and has its own size cap (next test).
+        if (response.request().resourceType() === "media") return;
         const body = await response.body().catch(() => Buffer.alloc(0));
         totalBytes += body.byteLength;
       } catch {
@@ -432,5 +459,12 @@ test.describe("responsive breakpoints, typography, and performance budget", () =
     await openWelcome(page);
     expect(thirdPartyScripts).toEqual([]);
     expect(totalBytes).toBeLessThan(3 * 1024 * 1024);
+  });
+
+  test("each demo film file stays within its 5MB cap", () => {
+    for (const name of ["demo-tour.mp4", "demo-tour.webm"]) {
+      const bytes = statSync(new URL(`../../src/main/resources/public/media/${name}`, import.meta.url)).size;
+      expect(bytes, name).toBeLessThanOrEqual(5 * 1024 * 1024);
+    }
   });
 });

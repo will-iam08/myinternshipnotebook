@@ -4063,7 +4063,7 @@ function markHeroVideoFailed(video) {
 function initLandingPage() {
   if (!landingShell) return;
 
-  const HERO_CHAPTERS = [0, 4.5, 9, 13.5];
+  const HERO_CHAPTERS = [0, 5, 10, 15, 20, 25];
   const chapterPills = $$(".hero-workflow-pill", landingShell);
   let pendingChapterTime = null;
   // After a chapter click, the clicked chapter stays highlighted until the video has really
@@ -4121,20 +4121,27 @@ function initLandingPage() {
         heroVideo.pause();
         syncHeroVideoState(heroVideo);
       } else {
-        const playPromise = heroVideo.play();
-        if (playPromise && typeof playPromise.then === "function") {
-          playPromise
-            .then(() => syncHeroVideoState(heroVideo))
-            .catch(err => {
-              if (heroVideo.error || heroVideo.networkState === HTMLMediaElement.NETWORK_NO_SOURCE || err?.name === "NotSupportedError") {
-                markHeroVideoFailed(heroVideo);
-              } else {
-                syncHeroVideoState(heroVideo);
-              }
-            });
-        } else {
-          syncHeroVideoState(heroVideo);
-        }
+        // The film is several megabytes, so it starts only once the page itself has loaded; the
+        // poster covers the frame until then. A chapter click before that starts it right away.
+        const startFilm = () => {
+          if (!heroVideo.paused) return;
+          const playPromise = heroVideo.play();
+          if (playPromise && typeof playPromise.then === "function") {
+            playPromise
+              .then(() => syncHeroVideoState(heroVideo))
+              .catch(err => {
+                if (heroVideo.error || heroVideo.networkState === HTMLMediaElement.NETWORK_NO_SOURCE || err?.name === "NotSupportedError") {
+                  markHeroVideoFailed(heroVideo);
+                } else {
+                  syncHeroVideoState(heroVideo);
+                }
+              });
+          } else {
+            syncHeroVideoState(heroVideo);
+          }
+        };
+        if (document.readyState === "complete") startFilm();
+        else window.addEventListener("load", startFilm, { once: true });
       }
     }
   }
