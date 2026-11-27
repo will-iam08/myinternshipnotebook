@@ -14,6 +14,7 @@ export function canElementScroll(el, deltaY, win) {
 }
 
 export function createScrollEngine({ win = window, lambda = 9, isEnabled = () => true }) {
+  if (!Number.isFinite(lambda) || lambda <= 0) lambda = 9;
   const root = win.document.documentElement;
   const subscribers = new Set();
   let started = false;
@@ -57,7 +58,7 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
 
   function frame(now) {
     frameId = null;
-    if (!isEnabled() || (!glide && isHeld())) {
+    if (!isEnabled() || isHeld()) {
       reset(win.scrollY);
       return;
     }
@@ -80,7 +81,7 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
     } else {
       frameId = win.requestAnimationFrame(frame);
     }
-    write(settled ? target : Math.round(current));
+    write(settled ? target : clamp(Math.round(current), Math.min(lastWritten, target), Math.max(lastWritten, target)));
   }
 
   function requestFrame() {
@@ -92,12 +93,17 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
   function onWheel(event) {
     resync();
     interruptGlide();
-    if (!isEnabled() || event.ctrlKey || event.metaKey || isHeld()) return;
+    if (event.cancelable === false || !isEnabled() || event.ctrlKey || event.metaKey || isHeld()) return;
     const delta = normalizeWheelDelta(event, win.innerHeight);
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY) || canElementScroll(event.target, delta, win)) return;
 
+    const max = maxScroll();
+    if (!Number.isFinite(delta) || delta === 0 ||
+        (delta < 0 && win.scrollY <= 0) || (delta > 0 && win.scrollY >= max)) return;
+    const nextTarget = clamp(target + delta, 0, max);
+    if (nextTarget === target) return;
     event.preventDefault();
-    target = clamp(target + delta, 0, maxScroll());
+    target = nextTarget;
     requestFrame();
   }
 
@@ -109,6 +115,8 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
     target = max;
     if (glide) glide = { from: current, duration: glide.duration - glide.elapsed, elapsed: 0 };
   }
+
+  const resizeObserver = win.ResizeObserver ? new win.ResizeObserver(onResize) : null;
 
   const listeners = [
     ["wheel", onWheel, { passive: false }],
@@ -123,15 +131,19 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
       if (started) return;
       started = true;
       reset(win.scrollY);
+      resizeObserver?.observe(root);
+      if (win.document.body) resizeObserver?.observe(win.document.body);
       for (const [type, handler, options] of listeners) win.addEventListener(type, handler, options);
     },
     stop() {
       if (!started) return;
       started = false;
+      resizeObserver?.disconnect();
       for (const [type, handler] of listeners) win.removeEventListener(type, handler);
       reset(win.scrollY);
     },
     scrollTo(targetY, { duration }) {
+      if (!Number.isFinite(targetY) || !Number.isFinite(duration)) return;
       reset(win.scrollY);
       target = clamp(targetY, 0, maxScroll());
       if (!started || !isEnabled() || duration <= 0 || target === current) {

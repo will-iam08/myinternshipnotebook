@@ -177,3 +177,41 @@ test("setProgress overrides until release", () => {
   step();
   assert.equal(progress(), "0.5000");
 });
+
+test("invalid progress cannot corrupt scene styles", () => {
+  const h = createHarness();
+  h.activate();
+  h.scenes.setProgress("feature", 0.5);
+  for (const p of [NaN, Infinity, -Infinity]) {
+    h.scenes.setProgress("feature", p);
+    h.scenes.render(1000);
+    assert.equal(h.progress(), "0.5000");
+  }
+  h.scenes.setProgress("feature", 2);
+  h.scenes.render(1000);
+  assert.equal(h.progress(), "1.0000");
+  h.scenes.release("feature");
+  h.scenes.render(1800);
+  h.scenes.render(NaN);
+  assert.equal(h.progress(), "0.5000");
+});
+
+test("render reads cached geometry and frame batching sleeps when idle", () => {
+  const h = createHarness();
+  h.activate();
+  h.step();
+  h.wrapper.getBoundingClientRect = () => { throw new Error("layout read in render"); };
+  for (const [object, key] of [[h.stage, "scrollHeight"], [h.wrapper, "offsetHeight"], [h.win, "innerHeight"]]) {
+    Object.defineProperty(object, key, { get() { throw new Error(`layout read: ${key}`); } });
+  }
+  h.scenes.render(1800);
+  assert.equal(h.progress(), "0.5000");
+  h.engineFrame()(2000);
+  h.engineFrame()(2200);
+  assert.equal(h.frames.size, 1);
+  h.step();
+  assert.equal(h.progress(), "0.7500");
+  assert.equal(h.frames.size, 0);
+  h.step();
+  assert.equal(h.frames.size, 0);
+});

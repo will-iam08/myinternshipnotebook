@@ -1,4 +1,4 @@
-import { sceneProgress } from "./motion-math.js";
+import { clamp, sceneProgress } from "./motion-math.js";
 
 export function createSceneSystem({ win = window, engine, headerHeight }) {
   const scenes = new Map();
@@ -8,6 +8,7 @@ export function createSceneSystem({ win = window, engine, headerHeight }) {
   let destroyed = false;
 
   function render(scrollY) {
+    if (!Number.isFinite(scrollY)) return;
     for (const scene of scenes.values()) {
       const { wrapper, stage, top, height, update, override } = scene;
       if (wrapper.dataset.sceneActive === undefined) continue;
@@ -72,8 +73,8 @@ export function createSceneSystem({ win = window, engine, headerHeight }) {
 
   function setProgress(id, p) {
     const scene = scenes.get(id);
-    if (!scene) return;
-    scene.override = p;
+    if (!scene || (p !== undefined && !Number.isFinite(p))) return;
+    scene.override = p === undefined ? undefined : clamp(p, 0, 1);
     onScroll();
   }
 

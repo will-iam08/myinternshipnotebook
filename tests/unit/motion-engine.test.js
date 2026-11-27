@@ -213,3 +213,143 @@ test("isEnabled() false: wheel stays native and scrollTo jumps", () => {
   assert.equal(win.scrollY, 800);
   assert.equal(frames.size, 0);
 });
+
+for (const [position, delta] of [[0, -100], [9200, 100], [0, 0]]) {
+  test(`wheel stays native when it cannot move from ${position} by ${delta}`, () => {
+    const h = createHarness();
+    h.win.scrollY = position;
+    assert.equal(h.wheel(delta), false);
+    assert.equal(h.frames.size, 0);
+  });
+}
+
+test("non-cancelable wheel stays native", () => {
+  const h = createHarness();
+  assert.equal(h.wheel(100, { cancelable: false }), false);
+  assert.equal(h.frames.size, 0);
+});
+
+test("invalid wheel deltas do not poison the engine", () => {
+  const h = createHarness();
+  for (const delta of [NaN, Infinity, -Infinity]) assert.equal(h.wheel(delta), false);
+  h.wheel(100);
+  h.settle();
+  assert.equal(h.win.scrollY, 100);
+});
+
+test("invalid scrollTo arguments leave the page idle", () => {
+  for (const [target, duration] of [[NaN, 400], [Infinity, 400], [100, NaN], [100, Infinity]]) {
+    const h = createHarness();
+    h.engine.scrollTo(target, { duration });
+    assert.equal(h.frames.size, 0);
+    assert.equal(h.win.scrollY, 0);
+  }
+});
+
+test("invalid damping rates fall back to a settling glide", () => {
+  for (const lambda of [NaN, Infinity, 0, -9]) {
+    const h = createHarness({ lambda });
+    h.wheel(100);
+    h.settle();
+    assert.equal(h.win.scrollY, 100);
+  }
+});
+
+test("modal hold interrupts a programmatic glide", () => {
+  const h = createHarness();
+  h.engine.scrollTo(1000, { duration: 400 });
+  h.step();
+  const before = h.win.scrollY;
+  h.classes.add("motion-hold");
+  h.settle();
+  assert.equal(h.win.scrollY, before);
+});
+
+test("fractional targets never overshoot during a glide", () => {
+  const h = createHarness();
+  h.engine.onFrame(y => assert.ok(y <= 0.6));
+  h.engine.scrollTo(0.6, { duration: 800 });
+  h.settle();
+});
+
+test("document shrink clamps the target without a window resize", () => {
+  const h = createHarness();
+  let observer;
+  h.engine.stop();
+  h.win.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; observer = this; }
+    observe() {}
+    disconnect() {}
+  };
+  const engine = createScrollEngine({ win: h.win });
+  engine.start();
+  engine.scrollTo(9000, { duration: 800 });
+  h.step();
+  h.win.document.documentElement.scrollHeight = 5000;
+  observer?.callback();
+  h.settle();
+  assert.equal(h.win.scrollY, 4200);
+  engine.stop();
+});
+
+test("line and page wheel modes settle in pixels", () => {
+  const h = createHarness();
+  h.wheel(3, { deltaMode: 1 });
+  h.settle();
+  assert.equal(h.win.scrollY, 48);
+  h.wheel(1, { deltaMode: 2 });
+  h.settle();
+  assert.equal(h.win.scrollY, 848);
+});
+
+test("disabling mid-glide stops both wheel and programmatic motion", () => {
+  for (const programmatic of [false, true]) {
+    let enabled = true;
+    const h = createHarness({ isEnabled: () => enabled });
+    if (programmatic) h.engine.scrollTo(1000, { duration: 400 });
+    else h.wheel(1000);
+    h.step();
+    const before = h.win.scrollY;
+    enabled = false;
+    h.settle();
+    assert.equal(h.win.scrollY, before);
+  }
+});
+
+test("start and restart sleep without input and remove all listeners", () => {
+  const h = createHarness();
+  let writes = 0;
+  h.engine.onFrame(() => writes++);
+  for (let i = 0; i < 3; i++) {
+    h.engine.start();
+    h.listeners.get("resize")();
+    h.listeners.get("scroll")();
+    h.settle();
+    assert.equal(writes, 0);
+    h.engine.stop();
+    h.engine.stop();
+    assert.equal(h.listeners.size, 0);
+    h.engine.start();
+  }
+  h.wheel(100);
+  h.settle();
+  assert.equal(h.win.scrollY, 100);
+  const count = writes;
+  h.settle();
+  assert.equal(writes, count);
+});
+
+test("hidden overflow and nested scroll edges hand wheel to the page", () => {
+  const h = createHarness();
+  const scroller = {
+    overflowY: "hidden", scrollTop: 40, scrollHeight: 200, clientHeight: 100,
+    parentElement: h.win.document.body
+  };
+  assert.equal(h.wheel(100, { target: scroller }), true);
+  h.settle();
+  scroller.overflowY = "scroll";
+  scroller.scrollTop = 0;
+  assert.equal(h.wheel(-50, { target: scroller }), true);
+  h.settle();
+  assert.equal(h.win.scrollY, 50);
+});
