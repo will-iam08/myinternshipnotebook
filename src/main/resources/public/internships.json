@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-26T22:23:25.114Z",
+  "generatedAt": "2026-11-27T22:01:12.750Z",
   "source": "https://github.com/SimplifyJobs/Summer2027-Internships",
   "sources": [
     {
@@ -14,6 +14,124 @@
     }
   ],
   "listings": [
+    {
+      "company": "Encepta",
+      "role": "GIS Data Technician Intern",
+      "location": "Victoria, BC, Canada, Burnaby, BC, Canada",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Winter 2026"
+      ],
+      "degrees": [],
+      "experienceLevel": "Junior",
+      "url": "https://encepta.bamboohr.com/careers/181/",
+      "postedAt": "2026-11-27T02:45:56.000Z",
+      "source": "simplify",
+      "region": "Canada",
+      "countries": [
+        "CA"
+      ],
+      "regions": [
+        "British Columbia"
+      ]
+    },
+    {
+      "company": "Synopsys",
+      "role": "Technical-Engineering Intern",
+      "location": "Mississauga, ON, Canada",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Summer 2027"
+      ],
+      "degrees": [
+        "Bachelor's"
+      ],
+      "experienceLevel": "Junior",
+      "url": "https://synopsys.avature.net/careers/JobDetail/19725",
+      "postedAt": "2026-11-27T02:30:46.000Z",
+      "source": "simplify",
+      "region": "Canada",
+      "countries": [
+        "CA"
+      ],
+      "regions": [
+        "Ontario"
+      ]
+    },
+    {
+      "company": "Atoms",
+      "role": "Software Engineer Intern",
+      "location": "Seattle, WA, SF, LA, NYC, Mountain View, CA",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Summer 2027"
+      ],
+      "degrees": [
+        "Bachelor's",
+        "Master's"
+      ],
+      "experienceLevel": "Intermediate",
+      "url": "https://job-boards.greenhouse.io/cssmerge/jobs/8963704002",
+      "postedAt": "2026-11-26T19:11:25.000Z",
+      "source": "simplify",
+      "region": "United States",
+      "countries": [
+        "US"
+      ],
+      "regions": [
+        "Washington",
+        "Louisiana",
+        "New York",
+        "California"
+      ]
+    },
+    {
+      "company": "PQShield",
+      "role": "Software Engineer Intern",
+      "location": "Oxford, UK",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Summer 2027"
+      ],
+      "degrees": [],
+      "experienceLevel": "Junior",
+      "url": "https://pqshield.com/careers/apply/5049820101?gh_jid=5049820101",
+      "postedAt": "2026-11-26T18:27:23.000Z",
+      "source": "simplify",
+      "region": "International",
+      "countries": [
+        "GB"
+      ],
+      "regions": [
+        "England"
+      ]
+    },
+    {
+      "company": "PQShield",
+      "role": "Hardware Engineer Intern - Placement Year",
+      "location": "Oxford, UK",
+      "workMode": "In-person",
+      "isCoop": false,
+      "terms": [
+        "Summer 2027"
+      ],
+      "degrees": [],
+      "experienceLevel": "Junior",
+      "url": "https://pqshield.com/careers/apply/5049819101?gh_jid=5049819101",
+      "postedAt": "2026-11-26T18:25:43.000Z",
+      "source": "simplify",
+      "region": "International",
+      "countries": [
+        "GB"
+      ],
+      "regions": [
+        "England"
+      ]
+    },
     {
       "company": "AMD",
       "role": "Hardware Engineering Intern",
@@ -469,31 +587,6 @@
       ],
       "regions": [
         "Georgia"
-      ]
-    },
-    {
-      "company": "ManTech",
-      "role": "C++ Developer Intern",
-      "location": "Lexington Park, MD",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Summer 2027"
-      ],
-      "degrees": [
-        "Bachelor's",
-        "Master's"
-      ],
-      "experienceLevel": "Intermediate",
-      "url": "https://mantech.avature.net/en_US/careers/JobDetail/67268",
-      "postedAt": "2026-11-25T23:24:00.000Z",
-      "source": "simplify",
-      "region": "United States",
-      "countries": [
-        "US"
-      ],
-      "regions": [
-        "Maryland"
       ]
     },
     {
@@ -1535,31 +1628,6 @@
       ]
     },
     {
-      "company": "CodeRabbit",
-      "role": "Software Engineer Intern",
-      "location": "SF",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "N/A"
-      ],
-      "degrees": [
-        "Bachelor's",
-        "Master's"
-      ],
-      "experienceLevel": "Intermediate",
-      "url": "https://jobs.ashbyhq.com/coderabbit/c30ab34a-98f3-4c41-b4ba-179bdbab32c9/application?embed=true",
-      "postedAt": "2026-11-25T00:00:00.000Z",
-      "source": "simplify",
-      "region": "United States",
-      "countries": [
-        "US"
-      ],
-      "regions": [
-        "California"
-      ]
-    },
-    {
       "company": "Xona Space Systems",
       "role": "Software Engineer Intern - Engineering Productivity",
       "location": "Burlingame, CA",
@@ -2260,32 +2328,6 @@
       ]
     },
     {
-      "company": "Charles Schwab",
-      "role": "Treasury Modeling Intern",
-      "location": "Lone Tree, CO",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Summer 2027"
-      ],
-      "degrees": [
-        "Bachelor's",
-        "Master's",
-        "PhD"
-      ],
-      "experienceLevel": "Intermediate",
-      "url": "https://career-schwab.icims.com/jobs/126255/job?mobile=true&needsRedirect=false",
-      "postedAt": "2026-11-24T00:00:00.000Z",
-      "source": "simplify",
-      "region": "United States",
-      "countries": [
-        "US"
-      ],
-      "regions": [
-        "Colorado"
-      ]
-    },
-    {
       "company": "Brave",
       "role": "Software Development Intern - Web3 Core",
       "location": "Remote in Canada",
@@ -2305,30 +2347,6 @@
       ],
       "regions": [
         "Other"
-      ]
-    },
-    {
-      "company": "Convverge",
-      "role": "Junior Developer Co-op",
-      "location": "Calgary, AB, Canada",
-      "workMode": "In-person",
-      "isCoop": true,
-      "terms": [
-        "N/A"
-      ],
-      "degrees": [
-        "Bachelor's"
-      ],
-      "experienceLevel": "Junior",
-      "url": "https://convverge.bamboohr.com/careers/31/",
-      "postedAt": "2026-11-21T07:43:11.000Z",
-      "source": "simplify",
-      "region": "Canada",
-      "countries": [
-        "CA"
-      ],
-      "regions": [
-        "Alberta"
       ]
     },
     {
@@ -3600,30 +3618,6 @@
       ],
       "experienceLevel": "Junior",
       "url": "https://jobs.grainger.com/Canada/job/THORNHILL-Analyste-des-op%C3%A9rations-de-terrain-1-1-ON-L3T-7W8/1450732400/?ats=successfactors",
-      "postedAt": "2026-11-13T23:44:17.000Z",
-      "source": "simplify",
-      "region": "Canada",
-      "countries": [
-        "CA"
-      ],
-      "regions": [
-        "Ontario"
-      ]
-    },
-    {
-      "company": "W.W. Grainger",
-      "role": "Customer Experience Intern",
-      "location": "Thornhill, Vaughan, ON, Canada",
-      "workMode": "In-person",
-      "isCoop": false,
-      "terms": [
-        "Summer 2027"
-      ],
-      "degrees": [
-        "Bachelor's"
-      ],
-      "experienceLevel": "Junior",
-      "url": "https://jobs.grainger.com/Canada/job/THORNHILL-GCAN-Customer-Experience-Intern-ON-L3T-7W8/1450621700/?ats=successfactors",
       "postedAt": "2026-11-13T23:44:17.000Z",
       "source": "simplify",
       "region": "Canada",
