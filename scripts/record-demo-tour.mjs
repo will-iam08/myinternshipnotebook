@@ -22,16 +22,18 @@ const OUT_WIDTH = 1920;
 const OUT_HEIGHT = 1080;
 const FPS = 60;
 const DURATION_SEC = 30;
-const LOOP_REST_START = DURATION_SEC - 0.3;
+const LOOP_REST_START = DURATION_SEC - 1;
 const TOTAL_FRAMES = FPS * DURATION_SEC;
 const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
 const MAX_POSTER_BYTES = 200 * 1024;
 const BITRATES = [1400, 1250, 1100];
 const POSTER_TIME = 3.4;
+const BOARD_CARD_GAP = 6;
+const SIDEBAR_BOTTOM_PADDING = 16;
 const CHAPTERS = { clipper: 0, board: 5, prep: 10, openings: 15, calendar: 20, insights: 25 };
 const ACTIONS = {
   newPage: 0.62, focusLink: 1.08, pasteLink: 1.62, fill: 2.42, saveStripe: 3.9,
-  grabStripe: 5.95, dropStripe: 7.25, filterPython: 8.55, openStripe: CHAPTERS.prep,
+  grabStripe: 5.95, dropStripe: 7, filterPython: 8.55, openStripe: CHAPTERS.prep,
   markPracticed: 12.45,
   filterTerm: 16.3, saveOpening: 18.3,
   openExport: 21.7, downloadCalendar: 22.85,
@@ -138,7 +140,7 @@ html, body {
 }
 
 .demo-app .cover {
-  padding: 16px 14px 16px;
+  padding: 16px 14px ${SIDEBAR_BOTTOM_PADDING}px;
 }
 
 .demo-traffic-lights {
@@ -205,7 +207,7 @@ html, body {
 }
 
 .demo-app .board .column { min-width: 0; padding: 8px 7px; }
-.demo-board-view .column-cards { gap: 6px; }
+.demo-board-view .column-cards { position: relative; gap: ${BOARD_CARD_GAP}px; }
 .demo-board-view .app-card { min-width: 0; gap: 3px; padding: 7px 6px 7px 9px; }
 .demo-board-view .app-role { font-size: 0.93rem; }
 .demo-board-view .app-card .chips { gap: 3px; }
@@ -260,6 +262,9 @@ html, body {
 .demo-window .ring { width: 96px; height: 96px; }
 .demo-app .demo-insights-view { max-width: 746px; margin-left: 0; }
 .demo-window :is(.funnel-row, .skill-bar) { min-height: 34px; }
+.demo-insights-view .funnel-row { grid-template-columns: 86px minmax(0, 1fr) 72px; }
+.demo-insights-view .funnel-value { justify-self: end; }
+.demo-insights-view :is(.funnel-bar, .skill-bar i) { min-width: 0; }
 
 /* Hover and focus simulation classes */
 .is-hovered {
@@ -273,6 +278,7 @@ html, body {
 }
 .button.primary.is-hovered {
   background: var(--primary-hover) !important;
+  color: #fff;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent), 0 8px 18px -6px rgba(179, 56, 18, 0.45) !important;
 }
 .demo-autofill-flash {
@@ -364,6 +370,8 @@ html, body {
 
 /* Kanban drag ghost, drop slot, and stamp */
 .demo-drop-slot {
+  position: absolute;
+  inset: 0 0 auto;
   border: 2px dashed var(--st-interview);
   background: color-mix(in srgb, var(--st-interview-bg) 55%, transparent);
   border-radius: 12px;
@@ -521,7 +529,7 @@ html, body {
             <a class="tab" id="nav-notebook" style="--tab: var(--tab-notebook)"><span>All pages</span><b class="tab-count" id="nav-page-count"></b></a>
             <a class="tab" id="nav-insights" data-anchor="nav-insights" style="--tab: var(--tab-insights)"><span>Insights</span></a>
           </nav>
-          <div class="cover-footer">
+          <div class="cover-footer" id="demo-sidebar-footer">
             <p class="storage-chip">Private to this browser</p>
           </div>
         </aside>
@@ -745,7 +753,14 @@ html, body {
     const dragP = seg(t, AT.grabStripe, AT.dropStripe, quintInOut);
     const lift = isDragging ? Math.sin(clamp((t - AT.grabStripe) / 0.25, 0, 1) * Math.PI * 0.5) *
       (1 - Math.pow(clamp((t - (AT.dropStripe - 0.18)) / 0.18, 0, 1), 2)) : 0;
-    const slotGrow = measureDropSlot ? 1 : seg(t, AT.grabStripe, AT.grabStripe + 0.55, smoothstep);
+    const dragStartPt = ANCHORS["card-stripe-applied"];
+    const dragEndPt = ANCHORS["slot-interview"];
+    const sourceHeight = dragStartPt?.height ?? 0;
+    const slotGrow = measureDropSlot ? 1 : seg(t, AT.grabStripe, AT.grabStripe + 0.35, smoothstep);
+    const settle = seg(t, AT.dropStripe, AT.dropStripe + 0.15, smoothstep);
+    const interviewHeight = ANCHORS["card-stripe-interview"]?.height ?? sourceHeight;
+    const landingStyle = dropped && settle < 1
+      ? \`height:\${lerp(sourceHeight, interviewHeight, settle)}px; overflow:hidden;\` : "";
     const stamp = clamp(springOut(t - AT.dropStripe, 320, 20), 0, 1.1);
 
     const renderCard = (app, { ghost = false, style = "" } = {}) => {
@@ -765,8 +780,6 @@ html, body {
         </article>\`;
     };
 
-    const dragStartPt = ANCHORS["card-stripe-applied"];
-    const dragEndPt = ANCHORS["slot-interview"];
     const dragX = isDragging ? lerp(dragStartPt.x, dragEndPt.x, dragP) - pageOrigin.x : 0;
     const dragY = isDragging ? lerp(dragStartPt.y, dragEndPt.y, dragP) - pageOrigin.y - Math.sin(dragP * Math.PI) * 26 : 0;
     const ghostStyle = \`left:\${dragX}px; top:\${dragY}px; width:\${dragStartPt?.width}px; transform: translate(-50%, -50%) scale(\${1 + 0.048 * lift}) rotate(\${-1.8 * lift}deg)\`;
@@ -779,7 +792,7 @@ html, body {
             <h1 class="view-title">Pipeline Board<span class="dot">.</span></h1>
           </div>
           <div class="filters" style="margin:0">
-            <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (\${cards.length})</button>
+            <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (\${active.length})</button>
             <button type="button" class="filter-chip \${t >= AT.filterPython - 0.25 && !filterPython ? "is-hovered" : ""}" data-anchor="chip-python" aria-pressed="\${filterPython}">Python (\${matches("Python")})</button>
             <button type="button" class="filter-chip" aria-pressed="false">TypeScript (\${matches("TypeScript")})</button>
           </div>
@@ -788,11 +801,17 @@ html, body {
           \${STAGES.map(stage => {
             const column = cards.filter(app => app.stage === stage);
             column.sort((a, b) => Number(b.company === DEMO.stripe.company) - Number(a.company === DEMO.stripe.company));
+            const dropSlot = stage === "INTERVIEW" && (isDragging || measureDropSlot);
+            const slotSpace = sourceHeight + ${BOARD_CARD_GAP};
+            const padding = dropSlot ? slotSpace * slotGrow
+              : stage === "APPLIED" && dropped ? slotSpace * (1 - settle) : 0;
             return \`<section class="column st-\${stage} \${isDragging && stage === "INTERVIEW" ? "drop" : ""}">
               <div class="column-head"><span class="dot"></span><h2>\${stage}</h2><span class="count">\${column.length}</span></div>
-              <div class="column-cards">
-                \${stage === "INTERVIEW" && (isDragging || measureDropSlot) ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:\${Math.round(120 * slotGrow)}px; opacity:\${slotGrow.toFixed(2)}"></div>\` : ""}
-                \${column.length ? column.map(app => renderCard(app)).join("") : '<p class="column-empty">No matches</p>'}
+              <div class="column-cards" style="padding-top:\${padding}px">
+                \${dropSlot ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:\${sourceHeight * slotGrow}px; opacity:\${slotGrow.toFixed(2)}"></div>\` : ""}
+                \${column.length ? column.map(app => renderCard(app, {
+                  style: app.company === DEMO.stripe.company ? landingStyle : ""
+                })).join("") : '<p class="column-empty">No matches</p>'}
               </div>
             </section>\`;
           }).join("")}
@@ -926,7 +945,8 @@ html, body {
   function renderInsightsView(t, { active, funnel, total } = notebookAt(t)) {
     const [, sent, interview, offers] = funnel;
     const responseRate = percent(interview, sent);
-    const progress = i => seg(t, CHAPTER.insights + 0.28 + i * 0.11, CHAPTER.insights + 1.42 + i * 0.11, quintOut);
+    const barProgress = seg(t, CHAPTER.insights + 0.28, CHAPTER.insights + 1.28, quintOut);
+    const barWidth = (value, max) => 100 * value / max * barProgress;
     const skillCounts = new Map();
     for (const app of active.filter(app => app.stage === "INTERVIEW" || app.stage === "OFFER")) {
       for (const skill of app.skills) skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1);
@@ -957,7 +977,8 @@ html, body {
                 const share = percent(funnel[i], total);
                 return \`<div class="funnel-row">
                   <span>\${label}</span>
-                  <div class="funnel-track"><div class="funnel-bar" style="flex:0 1 \${share * progress(i)}%; background: var(--st-\${label.toLowerCase()})"></div><span class="funnel-value">\${funnel[i]} <small>(\${share}%)</small></span></div>
+                  <div class="funnel-track"><div class="funnel-bar" style="width:\${barWidth(funnel[i], total)}%; background: var(--st-\${label.toLowerCase()})"></div></div>
+                  <span class="funnel-value">\${funnel[i]} <small>(\${share}%)</small></span>
                 </div>\`;
               }).join("")}
             </div>
@@ -965,7 +986,7 @@ html, body {
           <section class="card">
             <div class="card-head"><div><h2 class="card-title">Top Skills in Interviews</h2><p class="card-note">Most common tags among active interviews and offers</p></div></div>
             <div class="skill-bars">
-              \${topSkills.map(([skill, count], i) => \`<div class="skill-bar"><span>\${skill}</span><i style="width:\${100 * count / topSkills[0][1] * progress(i)}%"></i><b>\${count}</b></div>\`).join("")}
+              \${topSkills.map(([skill, count]) => \`<div class="skill-bar"><span>\${skill}</span><i style="width:\${barWidth(count, topSkills[0][1])}%"></i><b>\${count}</b></div>\`).join("")}
             </div>
           </section>
         </div>
@@ -1130,8 +1151,8 @@ html, body {
     [24.18, 1.24, "radar"],
     [24.95, 1, "overview"],
     [25.34, 1, "overview"],
-    [26.08, 1.26, "funnel"],
-    [28.25, 1.26, "funnel"],
+    [26.02, 1.26, "funnel"],
+    [27.68, 1.26, "funnel"],
     [AT.dissolve, 1, "overview"],
     [LOOP_END, 1, "overview"]
   ];
@@ -1253,8 +1274,10 @@ html, body {
     captureFocus("quick-fill");
     renderModal(0);
 
+    view.innerHTML = renderBoardView(CHAPTER.board);
+    capture(view, "card-stripe-applied", "chip-python");
     view.innerHTML = renderBoardView(CHAPTER.board, { measureDropSlot: true });
-    capture(view, "card-stripe-applied", "slot-interview", "chip-python");
+    capture(view, "slot-interview");
     captureFocus("board");
     view.innerHTML = renderBoardView(AT.dropStripe + 0.2);
     captureFocus("board");
@@ -1341,8 +1364,8 @@ html, body {
       [23.45, 23.95, pt("radar-card", 0, -8), "arrow", -1],
       [24.05, 24.15, CALENDAR_READ, "arrow", -1],
       [CHAPTER.insights - 0.2, CHAPTER.insights + 0.18, pt("nav-insights"), "arrow", 1],
-      [26.48, 27.62, pt("funnel-card", -20, 10), "arrow", -1],
-      [29.25, LOOP_END, REST, "arrow", 0]
+      [26.32, 27.42, pt("funnel-card", -20, 10), "arrow", -1],
+      [28.52, LOOP_END, REST, "arrow", 0]
     ];
   }
 
@@ -1397,7 +1420,7 @@ html, body {
   ];
   const TOASTS = [
     [stripeSavedAt, 4.95, DEMO.stripe.company + " saved to notebook"],
-    [AT.saveOpening, 19.75, featuredOpening.company + " saved to notebook"],
+    [AT.saveOpening, 19.10, featuredOpening.company + " saved to notebook"],
     [AT.downloadCalendar, 24.55, "Calendar file with 24 h and 2 h reminders"]
   ];
 
@@ -1447,19 +1470,22 @@ html, body {
       prepRect = focusRect("prep", viewIn);
     }
     const cam = computeCamera(t, prepRect);
+    const windowBottom = (WIN_TOP + WIN_H) * cam.scale + cam.ty;
+    const footerBottom = windowBottom - (1 + ${SIDEBAR_BOTTOM_PADDING}) * cam.scale;
+    const footerOffset = Math.min(0, (VIEW_H - MARGIN - 1 - footerBottom) / cam.scale);
+    document.getElementById("demo-sidebar-footer").style.transform = \`translateY(\${footerOffset}px)\`;
     const message = TOASTS.find(([from, until]) => t >= from && t < until);
     toast.style.display = message ? "flex" : "none";
     if (message) {
       const [from, until, label] = message;
       const rise = springOut(t - from, 280, 22);
       const fade = seg(t, until - 0.28, until, quintOut);
-      const riseOffset = (1 - rise) * 12 + fade * 8;
+      const riseOffset = (1 - rise) * 12;
       const right = (WIN_LEFT + WIN_W) * cam.scale + cam.tx;
-      const bottom = (WIN_TOP + WIN_H) * cam.scale + cam.ty;
-      toast.textContent = label;
+      if (toast.textContent !== label) toast.textContent = label;
       toast.style.opacity = clamp(rise * 1.4, 0, 1) * (1 - fade);
       toast.style.right = \`\${Math.max(20, (right - VIEW_W + MARGIN + 2) / cam.scale)}px\`;
-      toast.style.bottom = \`\${Math.max(20, (bottom - VIEW_H + MARGIN + 2) / cam.scale + riseOffset)}px\`;
+      toast.style.bottom = \`\${Math.max(20, (windowBottom - VIEW_H + MARGIN + 2) / cam.scale + riseOffset)}px\`;
       toast.style.transform = \`translateY(\${riseOffset}px)\`;
     }
     renderModal(t);
@@ -1539,7 +1565,7 @@ html, body {
     const toastMargin = visible(toast) ? edgeMargin(stageBounds, toast.getBoundingClientRect()) : null;
     const textElements = windowEl.querySelectorAll(
       "h1, h2, .view-title, .card-title, .view-sub, .card-note, .prep-sub, .eyebrow, " + BRAND_TEXT +
-      ", .filter-chip, button, kbd, .kpi :is(p, strong, span), .strip-figure, .strip-rate, .ring-label > *, .demo-toast, " +
+      ", .storage-chip, .filter-chip, button, kbd, .kpi :is(p, strong, span), .strip-figure, .strip-rate, .ring-label > *, .demo-toast, " +
       ".demo-board-view .app-card :is(.app-company, .app-role, .app-meta span, .chip, .demo-history-stamp)"
     );
     const slicedText = [...textElements]
@@ -1611,6 +1637,7 @@ function encodeWebm(ffmpegBin, framesPath, outPath) {
       "-f", "image2pipe", "-vcodec", "mjpeg", "-r", String(FPS), "-i", framesPath,
       "-vf", `scale=${OUT_WIDTH}:${OUT_HEIGHT}:flags=lanczos`,
       "-c:v", "libvpx", "-b:v", `${kbps}k`,
+      "-force_key_frames", String(LOOP_REST_START),
       "-g", String(FPS), "-pix_fmt", "yuv420p",
       "-deadline", "good", "-cpu-used", "2", "-auto-alt-ref", "1", "-lag-in-frames", "25",
       "-passlogfile", passLog
