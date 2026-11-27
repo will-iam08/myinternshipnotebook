@@ -2477,6 +2477,12 @@ html:has(#landing-shell:not([hidden])) {
   padding: 0;
 }
 
+@media (min-width: 900px) {
+  .hero-workflow-pills {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .hero-workflow-pills li {
   display: flex;
   margin: 0;
