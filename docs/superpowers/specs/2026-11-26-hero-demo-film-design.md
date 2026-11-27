@@ -42,3 +42,10 @@ The landing page video is the first thing a signed-out visitor sees. It should s
 ## Left to the builder
 - Exact camera keyframes, easing values, and the content of the openings and calendar scenes within the storyboard.
 - How the six pills lay out (two rows of three on desktop, one column on phones).
+
+## Revision (2026-11-27): kinetic explainer style
+The owner chose a Zelios-style animated explainer (reference: YouTube wwIt5ZvROrs) over the continuous screen recording. Decided:
+- Keep 6 chapters at 0, 5, 10, 15, 20, 25 s (about 30 s), so the pills and app.js stay as they are.
+- Keep the 5 MB cap per file, 60 fps, 1920x1080, 2x capture, VP8 WebM and faststart H.264 MP4.
+- Dark and light studio canvases alternate per chapter; 3D-tilted window shots alternate with oversized isolated UI pieces; kinetic headline typography with two-tone keywords; whip-pan cuts with short blur; corner-bracket scan for autofill (instant link parsing, no AI wording); SVG ring and checkmark confirmations; large outlined cursor; hook at the start and a "Stay in control." lockup at the end, dissolving back to frame 0.
+- The continuous-camera version stays on branch hero-film-recorder (commit f24df6e plus its footage) as a fallback.
