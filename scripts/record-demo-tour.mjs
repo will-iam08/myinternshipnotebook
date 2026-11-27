@@ -799,47 +799,97 @@ import CoreMedia
 import CoreVideo
 import Foundation
 import ImageIO
+import VideoToolbox
 
-let args = CommandLine.arguments
-let frames = try FileHandle(forReadingFrom: URL(fileURLWithPath: args[1]))
-defer { try? frames.close() }
-let offsetsData = try Data(contentsOf: URL(fileURLWithPath: args[2]))
-let offsets = try JSONDecoder().decode([UInt64].self, from: offsetsData)
-let outURL = URL(fileURLWithPath: args[3])
-let bitrate = Int(args[4])!
 let fps: Int32 = ${FPS}
 let frameDuration = CMTime(value: 1, timescale: fps)
-let loopPTS = CMTime(value: ${LOOP_REST_START * FPS}, timescale: fps)
+let keyframes: Set<Int64> = ${JSON.stringify([...Object.values(CHAPTERS), LOOP_REST_START].map(t => t * FPS))}
 let outWidth = ${OUT_WIDTH}
 let outHeight = ${OUT_HEIGHT}
 
-let writer = try AVAssetWriter(outputURL: outURL, fileType: .mp4)
-writer.shouldOptimizeForNetworkUse = true
+struct EncodingError: Error, CustomStringConvertible {
+  let description: String
+  init(_ description: String) { self.description = description }
+}
 
-let settings: [String: Any] = [
-  AVVideoCodecKey: AVVideoCodecType.h264,
-  AVVideoWidthKey: outWidth,
-  AVVideoHeightKey: outHeight,
-  AVVideoCompressionPropertiesKey: [
-    AVVideoAverageBitRateKey: bitrate,
-    AVVideoMaxKeyFrameIntervalKey: 60,
-    AVVideoExpectedSourceFrameRateKey: fps,
-    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
-  ]
-]
-let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
-input.expectsMediaDataInRealTime = false
+func checkVT(_ status: OSStatus, _ operation: String) throws {
+  guard status == noErr else { throw EncodingError("\\(operation) failed (OSStatus \\(status))") }
+}
 
-let attrs: [String: Any] = [
-  kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-  kCVPixelBufferWidthKey as String: outWidth,
-  kCVPixelBufferHeightKey as String: outHeight
-]
-let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: attrs)
-guard writer.canAdd(input) else { fatalError("Cannot add AVAssetWriterInput") }
-writer.add(input)
-guard writer.startWriting() else { fatalError("Cannot start writing: \\(String(describing: writer.error))") }
-writer.startSession(atSourceTime: .zero)
+final class MP4Output: @unchecked Sendable {
+  private let lock = NSLock()
+  private let writer: AVAssetWriter
+  private var input: AVAssetWriterInput?
+  private var writtenFrames: Int64 = 0
+  private var failure: Error?
+
+  init(url: URL) throws {
+    writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+    writer.shouldOptimizeForNetworkUse = true
+  }
+
+  private func start(with sample: CMSampleBuffer) throws -> AVAssetWriterInput {
+    guard let format = CMSampleBufferGetFormatDescription(sample) else {
+      throw EncodingError("Missing H.264 format description")
+    }
+    let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: format)
+    input.expectsMediaDataInRealTime = false
+    guard writer.canAdd(input) else { throw EncodingError("Cannot add H.264 passthrough input") }
+    writer.add(input)
+    guard writer.startWriting() else { throw EncodingError("Cannot start MP4 writer: \\(String(describing: writer.error))") }
+    writer.startSession(atSourceTime: .zero)
+    self.input = input
+    return input
+  }
+
+  func receive(_ status: OSStatus, _ flags: VTEncodeInfoFlags, _ sample: CMSampleBuffer?) {
+    lock.withLock {
+      guard failure == nil else { return }
+      do {
+        try checkVT(status, "Encoding frame \\(writtenFrames)")
+        let expectedPTS = CMTime(value: writtenFrames, timescale: fps)
+        guard !flags.contains(.frameDropped), let sample, CMSampleBufferDataIsReady(sample),
+              CMSampleBufferGetPresentationTimeStamp(sample) == expectedPTS else {
+          throw EncodingError("Missing or out-of-order encoded frame \\(writtenFrames)")
+        }
+        let input = try self.input ?? start(with: sample)
+        while !input.isReadyForMoreMediaData {
+          guard writer.status == .writing else {
+            throw EncodingError("MP4 writer stopped: \\(String(describing: writer.error))")
+          }
+          Thread.sleep(forTimeInterval: 0.005)
+        }
+        guard input.append(sample) else {
+          throw EncodingError("Cannot write encoded frame \\(writtenFrames): \\(String(describing: writer.error))")
+        }
+        writtenFrames += 1
+      } catch {
+        failure = error
+      }
+    }
+  }
+
+  func checkFailure() throws {
+    try lock.withLock {
+      if let failure { throw failure }
+    }
+  }
+
+  func finish(frameCount: Int) async throws {
+    // VideoToolbox has drained its callbacks before the writer is finalized.
+    let input = try lock.withLock {
+      if let failure { throw failure }
+      guard let input = self.input, writtenFrames == Int64(frameCount) else {
+        throw EncodingError("MP4 writer received \\(writtenFrames) of \\(frameCount) frames")
+      }
+      return input
+    }
+    writer.endSession(atSourceTime: CMTime(value: CMTimeValue(frameCount), timescale: fps))
+    input.markAsFinished()
+    await writer.finishWriting()
+    guard writer.status == .completed else { throw EncodingError("MP4 write failed: \\(String(describing: writer.error))") }
+  }
+}
 
 func pixelBuffer(from jpegData: Data, pool: CVPixelBufferPool) -> CVPixelBuffer? {
   guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil),
@@ -855,72 +905,119 @@ func pixelBuffer(from jpegData: Data, pool: CVPixelBufferPool) -> CVPixelBuffer?
     bitsPerComponent: 8,
     bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
     space: CGColorSpaceCreateDeviceRGB(),
-    bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+    bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue
   ) else { return nil }
   ctx.interpolationQuality = .high
   ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: outWidth, height: outHeight))
   return pb
 }
 
-func appendLoopKeyframe(_ buffer: CVPixelBuffer, at pts: CMTime) -> Bool {
-  var description: CMVideoFormatDescription?
-  guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: buffer, formatDescriptionOut: &description) == 0,
-        let description else { return false }
-  var timing = CMSampleTimingInfo(duration: frameDuration, presentationTimeStamp: pts, decodeTimeStamp: .invalid)
-  var sample: CMSampleBuffer?
-  guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: buffer, formatDescription: description,
-                                               sampleTiming: &timing, sampleBufferOut: &sample) == 0,
-        let sample else { return false }
-  CMSetAttachment(sample, key: kCMSampleBufferAttachmentKey_ForceKeyFrame, value: kCFBooleanTrue, attachmentMode: kCMAttachmentMode_ShouldPropagate)
-  return input.append(sample)
-}
-
-let frameCount = offsets.count - 1
-guard frameCount > 0, offsets.first == 0, let pool = adaptor.pixelBufferPool else {
-  fatalError("Invalid frame offsets or missing pixel buffer pool")
-}
-for i in 0..<frameCount {
-  try autoreleasepool {
-    try frames.seek(toOffset: offsets[i])
-    let count = Int(offsets[i + 1] - offsets[i])
-    guard let jpeg = try frames.read(upToCount: count), jpeg.count == count,
-          let buffer = pixelBuffer(from: jpeg, pool: pool) else {
-      fatalError("Cannot decode frame \\(i)")
-    }
-    while !input.isReadyForMoreMediaData {
-      guard writer.status == .writing else { fatalError("Writer stopped: \\(String(describing: writer.error))") }
-      Thread.sleep(forTimeInterval: 0.005)
-    }
-    let pts = CMTime(value: CMTimeValue(i), timescale: fps)
-    let appended = pts == loopPTS ? appendLoopKeyframe(buffer, at: pts) : adaptor.append(buffer, withPresentationTime: pts)
-    guard appended else {
-      fatalError("Cannot append frame \\(i): \\(String(describing: writer.error))")
-    }
+func verifyKeyframes(in url: URL) async throws {
+  let asset = AVURLAsset(url: url)
+  guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+    throw EncodingError("MP4 has no video track")
   }
-}
-
-writer.endSession(atSourceTime: CMTime(value: CMTimeValue(frameCount), timescale: fps))
-input.markAsFinished()
-await writer.finishWriting()
-guard writer.status == .completed else { fatalError("MP4 write failed: \\(String(describing: writer.error))") }
-
-func hasLoopKeyframe() async throws -> Bool {
-  let asset = AVURLAsset(url: outURL)
-  guard let track = try await asset.loadTracks(withMediaType: .video).first else { return false }
   let reader = try AVAssetReader(asset: asset)
   let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
   output.alwaysCopiesSampleData = false
   reader.add(output)
-  reader.timeRange = CMTimeRange(start: loopPTS, duration: frameDuration)
-  guard reader.startReading() else { return false }
+  guard reader.startReading() else { throw EncodingError("Cannot read MP4 keyframes: \\(String(describing: reader.error))") }
+  var missing = keyframes
   while let sample = output.copyNextSampleBuffer() {
-    guard CMSampleBufferGetPresentationTimeStamp(sample) == loopPTS else { continue }
-    let flags = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
-    return flags?.first?[kCMSampleAttachmentKey_NotSync as String] as? Bool != true
+    let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+    let index = CMTimeConvertScale(pts, timescale: fps, method: .roundHalfAwayFromZero).value
+    guard missing.contains(index), pts == CMTime(value: index, timescale: fps) else { continue }
+    let flags = (CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]])?.first
+    if flags?[kCMSampleAttachmentKey_NotSync as String] as? Bool != true,
+       flags?[kCMSampleAttachmentKey_PartialSync as String] as? Bool != true {
+      missing.remove(index)
+    }
   }
-  return false
+  guard reader.status == .completed else { throw EncodingError("MP4 keyframe read failed: \\(String(describing: reader.error))") }
+  guard missing.isEmpty else {
+    let times = missing.sorted().map { String($0 / Int64(fps)) }.joined(separator: ", ")
+    throw EncodingError("MP4 is missing required keyframes at seconds \\(times)")
+  }
 }
-guard try await hasLoopKeyframe() else { fatalError("MP4 is missing the loop keyframe at ${LOOP_REST_START}s") }
+
+func encode() async throws {
+  let args = CommandLine.arguments
+  let frames = try FileHandle(forReadingFrom: URL(fileURLWithPath: args[1]))
+  defer { try? frames.close() }
+  let offsetsData = try Data(contentsOf: URL(fileURLWithPath: args[2]))
+  let offsets = try JSONDecoder().decode([UInt64].self, from: offsetsData)
+  let frameCount = offsets.count - 1
+  guard frameCount == ${TOTAL_FRAMES}, offsets.first == 0,
+        zip(offsets, offsets.dropFirst()).allSatisfy({ $0.0 < $0.1 }) else {
+    throw EncodingError("Invalid frame offsets")
+  }
+  let outURL = URL(fileURLWithPath: args[3])
+  let output = try MP4Output(url: outURL)
+
+  let attributes = [
+    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+    kCVPixelBufferWidthKey as String: outWidth,
+    kCVPixelBufferHeightKey as String: outHeight
+  ]
+  var session: VTCompressionSession?
+  try checkVT(VTCompressionSessionCreate(
+    allocator: nil, width: Int32(outWidth), height: Int32(outHeight), codecType: kCMVideoCodecType_H264,
+    encoderSpecification: nil, imageBufferAttributes: attributes as CFDictionary, compressedDataAllocator: nil,
+    outputCallback: nil, refcon: nil, compressionSessionOut: &session
+  ), "Creating H.264 session")
+  guard let session else { throw EncodingError("Missing H.264 session") }
+  defer { VTCompressionSessionInvalidate(session) }
+
+  let properties: [String: Any] = [
+    kVTCompressionPropertyKey_ProfileLevel as String: kVTProfileLevel_H264_High_AutoLevel,
+    kVTCompressionPropertyKey_AverageBitRate as String: Int(args[4])!,
+    kVTCompressionPropertyKey_DataRateLimits as String: [${MAX_VIDEO_BYTES}, ${DURATION_SEC}],
+    kVTCompressionPropertyKey_ExpectedFrameRate as String: fps,
+    kVTCompressionPropertyKey_MaxKeyFrameInterval as String: ${FPS},
+    kVTCompressionPropertyKey_RealTime as String: false,
+    kVTCompressionPropertyKey_AllowFrameReordering as String: false,
+    kVTCompressionPropertyKey_MaxFrameDelayCount as String: 8
+  ]
+  try checkVT(VTSessionSetProperties(session, propertyDictionary: properties as CFDictionary), "Configuring H.264 session")
+  try checkVT(VTCompressionSessionPrepareToEncodeFrames(session), "Preparing H.264 session")
+  guard let pool = VTCompressionSessionGetPixelBufferPool(session) else {
+    throw EncodingError("Missing H.264 pixel buffer pool")
+  }
+
+  let forceKeyframe = [kVTEncodeFrameOptionKey_ForceKeyFrame as String: true] as CFDictionary
+  for i in 0..<frameCount {
+    try autoreleasepool {
+      try frames.seek(toOffset: offsets[i])
+      let count = Int(offsets[i + 1] - offsets[i])
+      guard let jpeg = try frames.read(upToCount: count), jpeg.count == count,
+            let buffer = pixelBuffer(from: jpeg, pool: pool) else {
+        throw EncodingError("Cannot decode frame \\(i)")
+      }
+      let index = CMTimeValue(i)
+      let pts = CMTime(value: index, timescale: fps)
+      var flags = VTEncodeInfoFlags()
+      try checkVT(VTCompressionSessionEncodeFrame(
+        session, imageBuffer: buffer, presentationTimeStamp: pts, duration: frameDuration,
+        frameProperties: keyframes.contains(index) ? forceKeyframe : nil, infoFlagsOut: &flags
+      ) { status, info, sample in
+        output.receive(status, info, sample)
+      }, "Submitting frame \\(i)")
+      guard !flags.contains(.frameDropped) else { throw EncodingError("Encoder dropped frame \\(i)") }
+      try output.checkFailure()
+    }
+  }
+
+  try checkVT(VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid), "Draining H.264 session")
+  try await output.finish(frameCount: frameCount)
+  try await verifyKeyframes(in: outURL)
+}
+
+do {
+  try await encode()
+} catch {
+  FileHandle.standardError.write(Data("MP4 encoding failed: \\(error)\\n".utf8))
+  exit(EXIT_FAILURE)
+}
 `;
   fs.writeFileSync(swiftScript, swiftSource);
   fs.writeFileSync(offsetsPath, JSON.stringify(offsets));
@@ -1088,7 +1185,6 @@ async function main() {
   const sceneHtml = buildSceneHtml(ICONS, LOGO);
   const ffmpegBin = audit ? null : findFfmpeg();
   let browser = await chromium.launch({ headless: true });
-  let tempDir;
   try {
     const page = await openScene(browser, sceneHtml, DEVICE_SCALE_FACTOR);
     if (audit) {
@@ -1097,35 +1193,35 @@ async function main() {
     }
 
     fs.mkdirSync(MEDIA_DIR, { recursive: true });
-    tempDir = fs.mkdtempSync(path.join(MEDIA_DIR, ".demo-tour-"));
-    const framesPath = path.join(tempDir, "frames.mjpeg");
-    const offsets = await captureFrames(page, framesPath);
-    await page.context().close();
-
-    const posterName = "demo-tour-poster.jpg";
-    const webmName = "demo-tour.webm";
-    const mp4Name = "demo-tour.mp4";
-    const posterBytes = await capturePoster(browser, sceneHtml, path.join(tempDir, posterName));
-    await browser.close();
-    browser = null;
-    const webmBytes = encodeWebm(ffmpegBin, framesPath, path.join(tempDir, webmName));
-    const mp4Path = path.join(tempDir, mp4Name);
-    const mp4Bytes = encodeMp4WithSwift(framesPath, offsets, mp4Path);
-    const faststart = checkMp4Faststart(mp4Path);
-    if (!faststart) throw new Error("MP4 moov atom must precede mdat");
-
-    for (const name of [posterName, webmName, mp4Name]) {
-      fs.renameSync(path.join(tempDir, name), path.join(MEDIA_DIR, name));
-    }
-    console.log(JSON.stringify({
-      frames: TOTAL_FRAMES, fps: FPS, durationSec: DURATION_SEC, mp4Bytes, webmBytes, posterBytes, faststart
-    }, null, 2));
-  } finally {
+    const tempDir = fs.mkdtempSync(path.join(MEDIA_DIR, ".demo-tour-"));
     try {
-      await browser?.close();
+      const framesPath = path.join(tempDir, "frames.mjpeg");
+      const offsets = await captureFrames(page, framesPath);
+      await page.context().close();
+
+      const posterName = "demo-tour-poster.jpg";
+      const webmName = "demo-tour.webm";
+      const mp4Name = "demo-tour.mp4";
+      const posterBytes = await capturePoster(browser, sceneHtml, path.join(tempDir, posterName));
+      await browser.close();
+      browser = null;
+      const webmBytes = encodeWebm(ffmpegBin, framesPath, path.join(tempDir, webmName));
+      const mp4Path = path.join(tempDir, mp4Name);
+      const mp4Bytes = encodeMp4WithSwift(framesPath, offsets, mp4Path);
+      const faststart = checkMp4Faststart(mp4Path);
+      if (!faststart) throw new Error("MP4 moov atom must precede mdat");
+
+      for (const name of [posterName, webmName, mp4Name]) {
+        fs.renameSync(path.join(tempDir, name), path.join(MEDIA_DIR, name));
+      }
+      console.log(JSON.stringify({
+        frames: TOTAL_FRAMES, fps: FPS, durationSec: DURATION_SEC, mp4Bytes, webmBytes, posterBytes, faststart
+      }, null, 2));
     } finally {
-      if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 3 });
     }
+  } finally {
+    await browser?.close();
   }
 }
 
