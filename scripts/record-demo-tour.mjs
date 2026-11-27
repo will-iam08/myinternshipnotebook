@@ -4,19 +4,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ICONS, LOGO } from "../src/main/resources/public/js/ui/icons.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC_DIR = path.join(ROOT, "src/main/resources/public");
 const MEDIA_DIR = path.join(PUBLIC_DIR, "media");
-const STYLES_PATH = path.join(PUBLIC_DIR, "styles.css");
 
 const VIEWPORT_WIDTH = 1280;
 const VIEWPORT_HEIGHT = 720;
-const WINDOW_WIDTH = 1152;
-const WINDOW_HEIGHT = 648;
-const FRAME_MARGIN = 12;
-const FOCUS_MARGIN = 24;
-const ZOOM_COVER_THRESHOLD = 1.12;
 const DEVICE_SCALE_FACTOR = 2;
 const OUT_WIDTH = 1920;
 const OUT_HEIGHT = 1080;
@@ -27,18 +22,8 @@ const TOTAL_FRAMES = FPS * DURATION_SEC;
 const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
 const MAX_POSTER_BYTES = 200 * 1024;
 const BITRATES = [1400, 1250, 1100];
-const POSTER_TIME = 3.4;
-const BOARD_CARD_GAP = 6;
-const SIDEBAR_BOTTOM_PADDING = 16;
+const POSTER_TIME = 4.1;
 const CHAPTERS = { clipper: 0, board: 5, prep: 10, openings: 15, calendar: 20, insights: 25 };
-const ACTIONS = {
-  newPage: 0.62, focusLink: 1.08, pasteLink: 1.62, fill: 2.42, saveStripe: 3.9,
-  grabStripe: 5.95, dropStripe: 7, filterPython: 8.55, openStripe: CHAPTERS.prep,
-  markPracticed: 12.45,
-  filterTerm: 16.3, saveOpening: 18.3,
-  openExport: 21.7, downloadCalendar: 22.85,
-  dissolve: LOOP_REST_START - 0.4
-};
 
 function findFfmpeg() {
   const candidates = [process.env.FFMPEG_BIN];
@@ -60,1523 +45,718 @@ function findFfmpeg() {
   throw new Error("Could not locate Playwright ffmpeg binary.");
 }
 
-function buildSceneHtml(appCss) {
-  const logoSvg = `<svg viewBox="0 0 40 40" width="32" height="32" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="9" fill="#0f172a"/><rect x="10" y="8.5" width="21" height="24" rx="3" fill="#faf9f6"/><path d="M14.5 16h11M14.5 20.5h11M14.5 25h7" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round"/><path d="M25 8.5h4.5v10l-2.25-1.8L25 18.5Z" fill="#b33812"/><g fill="#0f172a"><circle cx="10" cy="13" r="1.4"/><circle cx="10" cy="19" r="1.4"/><circle cx="10" cy="25" r="1.4"/></g></svg>`;
+function createTimeline(chapters, loopEnd) {
+  const whip = 0.18;
+  const dissolve = loopEnd - 0.4;
+  const shots = [
+    ["hook", "clipper", chapters.clipper], ["quick", "clipper", 1.8],
+    ["board", "board", chapters.board], ["drag", "board", 6.8],
+    ["prep", "prep", chapters.prep], ["readiness", "prep", 12.65],
+    ["openings", "openings", chapters.openings], ["opening", "openings", 17.05],
+    ["calendar", "calendar", chapters.calendar], ["confirmed", "calendar", 22.8],
+    ["insights", "insights", chapters.insights], ["outro", "insights", 26.8]
+  ].map(([id, chapter, start]) => ({ id, chapter, start, dark: (chapters[chapter] / 5) % 2 === 0 }));
+  const actions = {
+    newApplication: 2.55, paste: 2.93, scan: 3.27, saveStripe: 4.75,
+    grab: 7.5, drop: 8.3, python: 9.25,
+    term: 15.9, saveOpening: 18.1, export: 20.9, download: 21.95
+  };
+  const clicks = [
+    ["quick", "new", actions.newApplication], ["quick", "save-stripe", actions.saveStripe],
+    ["drag", "stripe", actions.grab], ["drag", "python", actions.python],
+    ["openings", "term", actions.term], ["opening", "save-opening", actions.saveOpening],
+    ["calendar", "export", actions.export], ["calendar", "download", actions.download]
+  ].map(([shot, target, at]) => ({ shot, target, at }));
+  const clamp = x => Math.min(1, Math.max(0, x));
+  const smooth = x => x * x * (3 - 2 * x);
+  const out = x => x === 1 ? 1 : 1 - 2 ** (-10 * x);
+  const progress = (t, from, to, ease = smooth) => ease(clamp((t - from) / (to - from)));
+  const spring = x => x <= 0 ? 0 : 1 - Math.exp(-12 * x) * (Math.cos(20 * x) + 0.6 * Math.sin(20 * x));
 
+  function at(t) {
+    if (t >= loopEnd) t = 0;
+    const index = shots.findLastIndex(shot => t >= shot.start);
+    const shot = shots[index];
+    const previous = shots[index - 1];
+    const whipping = previous?.chapter === shot.chapter && t < shot.start + whip;
+    const pan = whipping ? progress(t, shot.start, shot.start + whip, out) : 0;
+    const mix = whipping ? progress(t, shot.start, shot.start + whip) : 0;
+    const layers = whipping ? [
+      { shot: previous, t: shot.start, shift: -112 * pan, opacity: 1 - mix },
+      { shot, t, shift: 112 * (1 - pan), opacity: mix }
+    ] : [{ shot, t, shift: 0, opacity: 1 }];
+    if (t >= dissolve) {
+      layers.push({ shot: shots[0], t: 0, shift: 0, opacity: progress(t, dissolve, loopEnd), canvas: true });
+    }
+    return { t, shot, whipping, layers };
+  }
+
+  const stages = [
+    { label: "Saved", color: "#16a34a", wash: "#e2f5e9", ink: "#12693b" },
+    { label: "Applied", color: "#2563eb", wash: "#e4edff", ink: "#1846ac" },
+    { label: "Interview", color: "#df950d", wash: "#fff0d4", ink: "#8a4e00" },
+    { label: "Offer", color: "#1baf7a", wash: "#dcf7ef", ink: "#12684e" }
+  ];
+  const initial = [
+    ["Northwind", "Backend Intern", 0, ["Python", "SQL"]],
+    ["Figma", "Product Design Intern", 0, ["Figma"]],
+    ["Linear", "Software Intern", 0, ["TypeScript"]],
+    ["Shopify", "Frontend Intern", 1, ["TypeScript", "React"]],
+    ["Datadog", "Platform Intern", 1, ["Go"]],
+    ["Ramp", "Product Engineer Intern", 1, ["TypeScript"]],
+    ["Cedar Grove", "Platform Intern", 2, ["Python", "Go"]],
+    ["Ada", "Data Engineer Intern", 2, ["Python", "SQL"]],
+    ["Vercel", "Web Platform Intern", 2, ["TypeScript"]],
+    ["Kitebird", "Platform Intern", 3, ["Go"]]
+  ].map(([company, role, stage, skills]) => ({ company, role, stage, skills }));
+  const stripe = { company: "Stripe", role: "Software Engineer Intern", location: "Seattle, WA", skills: ["Python", "Go", "SQL"] };
+  const term = "Summer 2027";
+  const openings = [
+    ["Cloudflare", "Systems Engineer Intern", "Austin, TX", term],
+    ["Notion", "Product Engineer Intern", "New York, NY", "Fall 2027"],
+    ["Wealthsimple", "Software Developer Intern", "Toronto, ON", term],
+    ["Fathom", "Data Engineering Intern", "Vancouver, BC", term],
+    ["Sentry", "Developer Tools Intern", "Toronto, ON", term]
+  ].map(([company, role, location, term]) => ({ company, role, location, term }));
+  const readiness = 88;
+
+  function notebook(t) {
+    const active = [...initial];
+    if (t >= actions.saveStripe) active.push({ ...stripe, stage: t < actions.drop ? 1 : 2 });
+    if (t >= actions.saveOpening) active.push({ ...openings[0], stage: 0, skills: ["Go"] });
+    const columns = stages.map((_, i) => active.filter(app => app.stage === i));
+    const python = active.filter(app => app.skills.includes("Python"));
+    const funnel = columns.map((_, i) => columns.slice(i).flat().length);
+    const counts = new Map();
+    for (const app of active.filter(app => app.stage >= 2)) {
+      for (const skill of app.skills) counts.set(skill, (counts.get(skill) || 0) + 1);
+    }
+    const skills = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    return { active, columns, python, funnel, skills };
+  }
+
+  return { at, shots, actions, clicks, whip, dissolve, progress, out, spring,
+    stages, stripe, openings, term, readiness, notebook };
+}
+
+function buildSceneHtml(icons, logo) {
   return `<!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="utf-8">
 <style>
-${appCss}
-
-/* Midnight-navy studio stage + floating macOS app window */
-html, body {
-  width: 1280px;
-  height: 720px;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  background: #0b1120;
+:root {
+  font: 16px/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ink: #0f172a;
+  --porcelain: #faf9f6;
+  --terra: #b33812;
+  --cobalt: #2563eb;
+  --green: #1baf7a;
+  --paper-line: #e3e6ee;
+  --muted: #49576e;
 }
-
-.demo-stage {
-  position: relative;
-  width: 1280px;
-  height: 720px;
-  overflow: hidden;
-  isolation: isolate;
-  background:
-    radial-gradient(64% 58% at 50% 42%, rgba(200, 67, 25, 0.14), transparent 70%),
-    radial-gradient(56% 52% at 20% 18%, rgba(59, 130, 246, 0.14), transparent 65%),
-    radial-gradient(48% 48% at 84% 82%, rgba(20, 184, 138, 0.08), transparent 65%),
-    linear-gradient(155deg, #0b1120 0%, #111b2e 52%, #162033 100%);
-}
-
-/* Subtle studio vignette and ambient specular sweep */
-.demo-stage::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 50%, transparent 56%, rgba(4, 7, 15, 0.45) 100%);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.demo-camera {
-  position: relative;
-  width: 1280px;
-  height: 720px;
-  transform-origin: 0 0;
-  will-change: transform;
-  z-index: 3;
-}
-
-.demo-window {
-  --demo-border: #c4cbd2;
-  position: absolute;
-  left: ${(VIEWPORT_WIDTH - WINDOW_WIDTH) / 2}px;
-  top: ${(VIEWPORT_HEIGHT - WINDOW_HEIGHT) / 2}px;
-  width: ${WINDOW_WIDTH}px;
-  height: ${WINDOW_HEIGHT}px;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow:
-    0 38px 90px -18px rgba(2, 6, 23, 0.82),
-    0 12px 32px -8px rgba(2, 6, 23, 0.55),
-    0 0 0 1px rgba(15, 23, 42, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  background: var(--paper);
-}
-
-.app.demo-app {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  border-radius: 0;
-  box-shadow: none;
-  grid-template-columns: 224px minmax(0, 1fr);
-}
-
-.demo-app .cover {
-  padding: 16px 14px ${SIDEBAR_BOTTOM_PADDING}px;
-}
-
-.demo-traffic-lights {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 2px 6px 14px;
-}
-.demo-traffic-lights span {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  display: block;
-  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);
-}
-.demo-traffic-lights .tl-close { background: #ff5f57; }
-.demo-traffic-lights .tl-min { background: #febc2e; }
-.demo-traffic-lights .tl-max { background: #28c840; }
-
-.demo-app .cover-label {
-  margin-bottom: 14px;
-}
-
-.demo-app .cover kbd { opacity: 1; border-bottom-width: 1px; }
-
-.demo-app .page-wrap {
-  position: relative;
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.demo-app .page {
-  position: relative;
-  height: 100%;
-  overflow: hidden;
-}
-
-.demo-view-layer {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  will-change: transform, opacity;
-}
-
-.demo-app .view {
-  padding: 22px 32px 28px 48px;
-  max-width: none;
-}
-
-.demo-app .view-head {
-  margin-bottom: 14px;
-  padding-bottom: 10px;
-}
-
-.demo-app .view-title {
-  font-size: 1.92rem;
-}
-
-.demo-app .board {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  overflow: hidden;
-}
-
-.demo-app .board .column { min-width: 0; padding: 8px 7px; }
-.demo-board-view .column-cards { position: relative; gap: ${BOARD_CARD_GAP}px; }
-.demo-board-view .app-card { min-width: 0; gap: 3px; padding: 7px 6px 7px 9px; }
-.demo-board-view .app-role { font-size: 0.93rem; }
-.demo-board-view .app-card .chips { gap: 3px; }
-.demo-board-view .app-card .chip { font-size: 0.62rem; padding: 2px 4px; }
-.demo-board-view .drag-origin { opacity: 0.5; }
-.demo-board-view .demo-history-stamp { font-size: 0.64rem; }
-.demo-board-view :is(.view-head, .board) { max-width: 646px; }
-.demo-app .strip-top { max-width: 605px; }
-.demo-app .goal-card .card-title { width: max-content; }
-.demo-app .goal-card .card-note { max-width: 144px; }
-.demo-app .agenda-kind { width: 38px; white-space: nowrap; }
-
-.demo-window :is(.card, .app-card, .column, .sheet-page, .prep-group, .demo-mock-card,
-  .demo-modal-card, .demo-field-box, .demo-quickfill-display, .button:not(.primary),
-  .filter-chip, .prep-mark[aria-pressed="false"]) {
-  border: 1px solid var(--demo-border);
-}
-
-.demo-stage *, .demo-stage *::before, .demo-stage *::after {
-  animation: none !important;
-  transition: none !important;
-}
-
-.demo-opening-row {
-  display: grid;
-  grid-template-columns: 108px minmax(0, 1fr) 105px 88px 64px;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-}
-
-.demo-opening-row + .demo-opening-row { border-top: 1px solid var(--demo-border); }
-.demo-opening-row .button { min-height: 36px; }
-.demo-app :is(.demo-openings-view, .demo-calendar-view) .view-head,
-.demo-openings-feed { max-width: 646px; }
-.demo-openings-list { padding: 4px 8px; }
-.demo-export { position: relative; z-index: 8; }
-.demo-export-menu { position: absolute; right: 0; top: calc(100% + 8px); width: max-content; padding: 6px; }
-.demo-export-menu .button { background: var(--paper-2); }
-.demo-prep-page { width: 624px; margin: 18px 28px 18px 42px; }
-.demo-prep-page .prep-mark { min-width: 116px; justify-content: center; }
-.demo-prep-page .entry-head { margin-bottom: 10px; }
-.demo-prep-page .stepper { margin-bottom: 12px; }
-.demo-prep-page .prep-q { padding: 5px 0; }
-.demo-prep-page .prep-mark { min-height: 36px; }
-.demo-prep-page .entry-fields { margin-bottom: 12px; }
-.demo-prep-page :is(.entry-head, .stepper, .entry-fields, .prep-head, .prep-progress),
-.demo-prep-page.prep-detail .prep-q:not([data-focus]) {
-  opacity: var(--prep-context-opacity);
-  visibility: var(--prep-context-visibility);
-}
-.demo-window .ring { width: 96px; height: 96px; }
-.demo-app .demo-insights-view { max-width: 746px; margin-left: 0; }
-.demo-window :is(.funnel-row, .skill-bar) { min-height: 34px; }
-.demo-insights-view .funnel-row { grid-template-columns: 86px minmax(0, 1fr) 72px; }
-.demo-insights-view .funnel-value { justify-self: end; }
-.demo-insights-view :is(.funnel-bar, .skill-bar i) { min-width: 0; }
-
-/* Hover and focus simulation classes */
-.is-hovered {
-  border-color: var(--accent-ink) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent), var(--shadow-md) !important;
-}
-.tab.is-hovered {
-  background: var(--cover-hover) !important;
-  color: var(--cover-ink) !important;
-  box-shadow: none !important;
-}
-.button.primary.is-hovered {
-  background: var(--primary-hover) !important;
+*, *::before, *::after { box-sizing: border-box; }
+html, body, main { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+main { position: relative; isolation: isolate; }
+h1, h2, h3, p { margin: 0; }
+button { font: inherit; }
+svg { display: block; flex: none; }
+em { color: var(--accent); font-style: normal; }
+.canvas, .shot { position: absolute; inset: 0; }
+.canvas.dark {
+  --accent: #d94e28;
   color: #fff;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent), 0 8px 18px -6px rgba(179, 56, 18, 0.45) !important;
+  background: radial-gradient(ellipse at 42% 112%, #d94e2849, transparent 57%),
+    radial-gradient(ellipse at 67% 107%, #2563eb46, transparent 58%),
+    linear-gradient(149deg, #090c12 35%, #070a12);
 }
-.demo-autofill-flash {
-  border-color: var(--accent-ink) !important;
-  background: color-mix(in srgb, var(--accent-soft) 60%, var(--card)) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent) !important;
-}
-
-/* Modal overlay inside the floating window */
-.demo-modal-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(9, 12, 18, 0.48);
-  backdrop-filter: blur(4px);
-  display: grid;
-  place-items: center;
-  z-index: 30;
-  opacity: 0;
-  pointer-events: none;
-}
-.demo-modal-card {
-  width: 644px;
-  background: var(--card);
-  border: 1px solid var(--line-strong);
-  border-radius: 16px;
-  box-shadow: 0 28px 60px -14px rgba(15, 23, 42, 0.42), 0 0 0 1px rgba(15, 23, 42, 0.06);
-  overflow: hidden;
-  will-change: transform, opacity;
-}
-.demo-modal-card .sheet-head {
-  padding: 13px 20px 10px;
-}
-.demo-modal-card .sheet-head h2 {
-  font-size: 1.28rem;
-}
-.demo-modal-card .sheet-body {
-  padding: 12px 20px;
-}
-.demo-modal-card .sheet-foot {
-  padding: 10px 20px 12px;
-}
-.demo-typing-caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  background: var(--accent-ink);
-  vertical-align: text-bottom;
-  margin-left: 1px;
-}
-.demo-quickfill-display {
-  display: flex;
-  align-items: center;
-  min-height: 40px;
-  flex: 1;
-  background: var(--card);
-  border: 1.5px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 7px 12px;
-  font: 500 0.84rem/1.3 var(--mono);
+.canvas.light {
+  --accent: #b33812;
   color: var(--ink);
-  overflow: hidden;
-  white-space: nowrap;
+  background: radial-gradient(ellipse at 42% 2%, #fff 16%, transparent 74%),
+    linear-gradient(150deg, #fff, #f2f0ea 54%, #e8ecf4);
 }
-.demo-quickfill-display.is-focused {
-  border-color: var(--focus);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 20%, transparent);
+.shot-title {
+  position: absolute; top: 65px; left: 0; width: 100%; text-align: center;
+  font-size: 59px; line-height: 1.04; font-weight: 750; letter-spacing: -.065em;
 }
-.demo-quickfill-placeholder {
-  color: var(--faint);
-  font-family: var(--sans);
+.space { position: absolute; perspective: 1400px; transform-style: preserve-3d; }
+.tilt, .mount { position: relative; transform-style: preserve-3d; }
+.mount::before {
+  content: ""; position: absolute; inset: 8% 1% -5%; border-radius: 28%;
+  background: radial-gradient(ellipse at 16% 75%, #d94e2875, transparent 66%),
+    radial-gradient(ellipse at 87% 22%, #2563eb80, transparent 67%),
+    radial-gradient(ellipse at 82% 92%, #1baf7a6e, transparent 60%);
+  filter: blur(30px); transform: translateZ(-36px);
 }
-.demo-field-box {
-  background: var(--card);
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  min-height: 38px;
-  padding: 7px 11px;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.surface {
+  position: relative; transform: translateZ(8px); color: var(--ink);
+  background: linear-gradient(148deg, #fff 0%, var(--porcelain) 100%);
+  border: 1px solid #fff; border-radius: 26px;
+  box-shadow: 0 30px 64px -27px #080e2459, 0 10px 24px -14px #080e244a, 0 0 0 1px #0f172a16;
 }
-.demo-field-box.is-empty {
-  color: var(--faint);
-  font-weight: 450;
+.dark .surface { box-shadow: 0 36px 75px -22px #000b, 0 0 0 1px #fff2; }
+.icon { width: 20px; height: 20px; }
+.logo { display: flex; align-items: center; }
+.logo svg { width: 34px; height: 34px; }
+.chip, .button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  position: relative; white-space: nowrap; border-radius: 999px; font-weight: 680;
 }
+.chip { padding: 6px 11px; background: #edf0f6; color: #35445d; font-size: 13px; }
+.button { padding: 10px 15px; background: #fff; color: var(--ink); border: 1px solid #d4dbe8; }
+.button.primary { background: var(--terra); border-color: #94310f; color: #fff; }
+.button.active { background: #e4edff; border-color: #a7bff9; color: #1846ac; }
+.button.done { background: #e2f5e9; border-color: #b4e0c4; color: #12693b; }
+.button.pressed { filter: brightness(.92); }
+.hitpoint { position: absolute; top: 50%; left: 50%; width: 0; height: 0; pointer-events: none; }
+.check-svg { width: 100%; height: 100%; overflow: visible; }
+.badge {
+  display: grid; place-items: center; width: 35px; height: 35px;
+  color: #137553; border-radius: 50%; background: #dff8ed; box-shadow: inset 0 0 0 1px #1baf7a38;
+}
+.badge svg { width: 22px; height: 22px; }
+.typing-caret { display: inline-block; width: .045em; height: .82em; margin-left: .09em; vertical-align: -.025em; background: currentColor; }
 
-/* Kanban drag ghost, drop slot, and stamp */
-.demo-drop-slot {
-  position: absolute;
-  inset: 0 0 auto;
-  border: 2px dashed var(--st-interview);
-  background: color-mix(in srgb, var(--st-interview-bg) 55%, transparent);
-  border-radius: 12px;
-  box-sizing: border-box;
-  overflow: hidden;
+.hook-title {
+  position: absolute; top: 248px; left: 120px; right: 120px; z-index: 1;
+  font-size: 90px; line-height: 1.03; letter-spacing: -.066em; font-weight: 750; text-align: center;
+  text-shadow: 0 4px 44px #070a12;
 }
-.demo-drag-card {
-  position: absolute;
-  width: 170px;
-  z-index: 35;
-  pointer-events: none;
-  margin: 0;
-  box-shadow: 0 26px 48px -12px rgba(15, 23, 42, 0.36), 0 0 0 2px var(--st-interview) !important;
-  will-change: transform, left, top;
-}
-.demo-history-stamp {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--st-interview-bg);
-  border: 1px solid color-mix(in srgb, var(--st-interview) 45%, transparent);
-  color: var(--ink);
-  font-size: 0.68rem;
-  font-weight: 700;
-  transform-origin: left center;
-}
+.hook-title > span { display: block; min-height: 1.03em; }
+.ghost-layer { position: absolute; inset: 0; pointer-events: none; }
+.ghost .surface { padding: 18px; color: #b3c0d7; background: #151d30; border-color: #7d8da84d; }
+.ghost .mount::before { opacity: .46; }
+.ghost h2 { font-size: 20px; }
+.ghost p { margin: 8px 0 15px; font-size: 14px; }
+.ghost-grid { height: 112px; margin-top: 15px; border: 1px solid #8094b44d; border-radius: 6px;
+  background: repeating-linear-gradient(to right, transparent 0 41px, #8094b44d 41px 42px),
+    repeating-linear-gradient(to bottom, transparent 0 21px, #8094b44d 21px 22px),
+    linear-gradient(#364560 21px, transparent 21px); }
+.ghost-lines { display: grid; gap: 9px; }
+.ghost-lines i { height: 5px; border-radius: 3px; background: #7283a25c; }
+.ghost-lines i:nth-child(2) { width: 76%; }
+.ghost-lines i:nth-child(3) { width: 56%; }
 
-/* Mock interview score overlay card inside entry workflow */
-.demo-mock-card {
-  margin-top: 12px;
-  background: var(--paper-2);
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  padding: 14px 16px;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 14px;
-  align-items: center;
+.new-application .surface { padding: 17px; border-radius: 29px; }
+.new-application .button { width: 100%; font-size: 32px; padding: 23px 20px; letter-spacing: -.035em; }
+.new-application .icon { width: 28px; height: 28px; }
+.quick .surface { padding: 23px; }
+.quick-head { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+.quick-head h2 { font-size: 28px; letter-spacing: -.045em; }
+.quick-head .app-icon { background: #eee8ff; color: #5536a6; }
+.app-icon {
+  width: 40px; height: 40px; display: grid; place-items: center; flex: none;
+  border-radius: 12px; background: #f9e6df; color: var(--terra); font-weight: 760;
 }
-.demo-mock-score-box {
-  background: var(--st-saved-bg);
-  border: 1.5px solid var(--st-saved);
-  border-radius: 12px;
-  padding: 10px 14px;
-  text-align: center;
-  min-width: 114px;
+.link-bar {
+  display: flex; align-items: center; gap: 10px; height: 51px; padding: 0 13px;
+  border: 1px solid #b4c0d8; border-radius: 12px; background: #f0f4fb; color: #263654;
+  font: 550 13px ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: nowrap;
 }
-.demo-mock-score-box strong {
-  display: block;
-  font: 700 1.85rem/1 var(--serif);
-  color: var(--ink);
-}
-.demo-mock-score-box span {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--good);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.demo-mock-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 6px;
-}
-.demo-metric-pill {
-  background: var(--card);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
-  font-weight: 650;
-  color: var(--ink-2);
-}
-.demo-metric-pill.good {
-  background: var(--st-saved-bg);
-  border-color: var(--st-saved);
-  color: var(--ink);
-}
+.quick-result { position: relative; margin-top: 16px; height: 172px; padding: 11px 12px; background: #edf1f684; border-radius: 12px; }
+.quick-result p { font-size: 13px; color: var(--muted); font-weight: 680; margin-bottom: 10px; }
+.quick-fields { display: flex; flex-wrap: wrap; align-content: start; gap: 8px; }
+.quick-fields .chip { justify-content: flex-start; border: 1px solid #d9e3f0; background: #fff; font-size: 15px; padding: 7px 11px; }
+.quick-fields .skill { background: #e4edff; color: #1846ac; border-color: #cbdafe; }
+.quick-fields .icon { width: 15px; height: 15px; }
+.reticle, .scan-beam { position: absolute; pointer-events: none; }
+.reticle { inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); color: #2563eb; filter: drop-shadow(0 0 5px #447fff9c); }
+.scan-beam { left: 5px; right: 5px; height: 2px; background: #65a0ff; box-shadow: 0 0 12px 3px #488aff83; }
+.quick-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; min-height: 41px; }
+.quick-foot .button { min-width: 168px; }
+.quick-foot > span { color: var(--muted); font-weight: 670; font-size: 14px; }
+.flank { position: absolute; top: 315px; width: 295px; font-size: 48px; font-weight: 750; letter-spacing: -.065em; line-height: 1.03; }
+.flank.left { right: 942px; text-align: right; }
+.flank.right { left: 941px; }
 
-/* Toast notification inside floating window */
-.demo-toast {
-  position: absolute;
-  right: 20px;
-  bottom: 20px;
-  z-index: 55;
-  background: var(--ink);
-  color: var(--paper);
-  border-radius: 12px;
-  padding: 9px 15px;
-  font-size: 0.84rem;
-  font-weight: 650;
-  box-shadow: 0 18px 34px -10px rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.window .surface { border-radius: 17px; }
+.chrome { display: grid; grid-template-columns: 88px 1fr 88px; align-items: center; padding: 0 14px; height: 37px; background: #fbfcfe; border-radius: 17px 17px 0 0; border-bottom: 1px solid var(--paper-line); }
+.traffic { display: flex; gap: 6px; }
+.traffic i { width: 9px; height: 9px; border-radius: 50%; background: #ff6058; }
+.traffic i:nth-child(2) { background: #ffbb36; }
+.traffic i:nth-child(3) { background: #2ac845; }
+.window-name { text-align: center; font-size: 11px; font-weight: 650; color: #4d5c74; }
+.window-body { display: grid; grid-template-columns: 171px minmax(0, 1fr); height: 443px; }
+.sidebar { display: flex; flex-direction: column; gap: 7px; padding: 17px 11px; background: var(--ink); color: #f8fafc; border-radius: 0 0 0 16px; }
+.sidebar .logo { gap: 6px; font-size: 12px; line-height: 1.13; font-weight: 740; margin-bottom: 16px; }
+.sidebar nav { display: grid; gap: 5px; }
+.sidebar .tab { display: flex; gap: 9px; align-items: center; padding: 8px; border-radius: 7px; font-size: 12px; color: #c7d1e4; }
+.sidebar .tab[aria-current] { color: #fff; background: #ffffff1d; font-weight: 720; }
+.sidebar .icon { width: 15px; height: 15px; }
+.sidebar-count { display: flex; align-items: center; gap: 6px; margin: auto 5px 0; font-size: 12px; color: #c7d1e4; }
+.sidebar-count::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #1baf7a; }
+.window-content { padding: 19px 22px; }
+.pane-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.pane-header h2 { font-size: 32px; letter-spacing: -.048em; }
+.filters { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; }
+.filters .button, .pane-header .button { font-size: 12px; padding: 6px 11px; }
+.column-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.column { padding: 8px; border-radius: 11px; background: #edf0f6; min-height: 236px; }
+.column h3 { display: flex; align-items: center; gap: 6px; margin: 1px 0 8px; font-size: 12px; color: var(--stage-ink); }
+.column h3 i { width: 6px; height: 6px; border-radius: 50%; background: var(--stage-color); }
+.column h3 b { border-radius: 5px; background: var(--stage-wash); margin-left: auto; padding: 3px 5px; }
+.mini-card { padding: 7px; min-height: 45px; background: #fff; border: 1px solid #e0e6ef; border-left: 2px solid var(--stage-color); border-radius: 6px; margin-top: 5px; }
+.mini-card b, .mini-card span { display: block; }
+.mini-card b { font-size: 12px; }
+.mini-card span { font-size: 10px; color: var(--muted); }
 
-/* Top-level crisp Retina cursor and soft click halo */
-.demo-ripple {
-  position: absolute;
-  width: 38px;
-  height: 38px;
-  margin-left: -19px;
-  margin-top: -19px;
-  border-radius: 50%;
-  border: 2px solid rgba(200, 67, 25, 0.85);
-  background: rgba(200, 67, 25, 0.14);
-  pointer-events: none;
-  z-index: 80;
+.lanes { position: absolute; left: 258px; right: 258px; top: 204px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+.lane { min-height: 313px; padding: 17px 22px; border-radius: 27px; border: 1.5px dashed #aab8cf; background: #ffffff8c; color: var(--stage-ink); }
+.lane > b { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; }
+.lane > b::before { content: ""; width: 8px; height: 8px; background: var(--stage-color); border-radius: 50%; }
+.lane:last-child { background: #fff3dd80; border-color: #d9b77d; }
+.drag-card .surface {
+  padding: 17px 19px; min-height: 202px;
+  box-shadow: 0 calc(30px + 22px * var(--lift, 0)) calc(63px + 28px * var(--lift, 0)) -25px #080e246b, 0 0 0 1px #0f172a16;
 }
-.demo-cursor {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 28px;
-  height: 32px;
-  pointer-events: none;
-  z-index: 90;
-  filter: drop-shadow(0 5px 10px rgba(2, 6, 23, 0.38));
-  transform-origin: 4px 3px;
+.drag-card [data-anchor] { position: relative; min-height: 166px; }
+.drag-card h2 { margin: 12px 0 1px; font-size: 29px; letter-spacing: -.04em; }
+.drag-card p { color: var(--muted); font-size: 14px; }
+.drag-card .tags { display: flex; gap: 5px; margin-top: 12px; }
+.drag-card .status { float: right; position: relative; width: 95px; height: 28px; }
+.status .chip { position: absolute; inset: 0; background: var(--stage-wash); color: var(--stage-ink); }
+.stamp { display: flex; align-items: center; justify-content: center; gap: 6px; position: absolute; inset: auto 0 -51px; color: #12694c; font-size: 17px; font-weight: 750; white-space: nowrap; }
+.stamp svg { width: 27px; height: 27px; color: #1baf7a; }
+.python-filter { position: absolute; left: 0; right: 0; top: 551px; display: flex; justify-content: center; align-items: center; gap: 8px; }
+.python-filter .button { min-width: 118px; }
+.python-results { position: absolute; inset: 49px 0 auto; display: flex; justify-content: center; align-items: center; gap: 7px; }
+.python-results .chip { background: #fff; border: 1px solid #d4dbe8; }
+
+.prep-pill .surface { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px 15px 22px; border-radius: 999px; }
+.prep-pill h2 { flex: 1; font-size: 23px; letter-spacing: -.035em; }
+.prep-pill .app-icon { margin-right: 14px; background: #eef2f8; color: #33496c; border-radius: 50%; }
+.prep-pill .badge { width: 40px; height: 40px; }
+.ring-orbit { width: 336px; height: 336px; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle, #10251f, #101b22 55%, #09141d 68%); border: 1px solid #1baf7a2e; box-shadow: 0 0 95px -28px #1baf7a76, inset 0 0 32px #1baf7a19; }
+.ring-orbit > svg { position: absolute; inset: 14px; width: 306px; height: 306px; filter: drop-shadow(0 0 8px #1baf7aab); }
+.score { position: relative; text-align: center; color: #fff; font-variant-numeric: tabular-nums; }
+.score b { font-size: 87px; font-weight: 760; letter-spacing: -.074em; }
+.score span { color: #b9cbcb; margin-left: 6px; font-size: 24px; font-weight: 650; }
+.score p { margin-top: 4px; font-size: 19px; font-weight: 640; color: #baf2dc; }
+.score .check-svg { color: #1baf7a; width: 31px; height: 31px; margin: 10px auto 0; }
+
+.feed { border-radius: 12px; border: 1px solid var(--paper-line); background: #fff; }
+.feed-row { display: grid; grid-template-columns: 114px 1fr 87px 86px 52px; gap: 8px; align-items: center; padding: 11px 9px 11px 12px; font-size: 11px; }
+.feed-row + .feed-row { border-top: 1px solid var(--paper-line); }
+.feed-row b { font-size: 12px; }
+.feed-row .chip, .feed-row .button { font-size: 10px; padding: 4px 5px; }
+.opening-card .surface { padding: 23px 27px; }
+.opening-top { display: flex; align-items: center; gap: 15px; }
+.opening-top .app-icon { width: 51px; height: 51px; border-radius: 15px; }
+.opening-top .icon { width: 23px; height: 23px; }
+.opening-top h2 { font-size: 34px; letter-spacing: -.05em; }
+.opening-top .button { margin-left: auto; min-width: 106px; font-size: 17px; }
+.opening-card h3 { margin: 25px 0 12px; font-size: 27px; letter-spacing: -.04em; }
+.opening-meta { display: flex; align-items: center; gap: 8px; }
+.opening-meta .chip { font-size: 15px; }
+.opening-meta .icon { width: 16px; height: 16px; }
+.opening-count { position: absolute; top: 500px; left: 0; right: 0; text-align: center; font-size: 17px; font-weight: 700; color: var(--muted); }
+.opening-count b { color: #12694c; }
+.toast {
+  position: absolute; left: 50%; top: 549px; width: max-content;
+  display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #ccd9d5;
+  border-radius: 999px; padding: 8px 17px 8px 9px; color: var(--ink);
+  font-size: 15px; font-weight: 700; box-shadow: 0 12px 26px #0f172a20;
 }
+.toast .badge { width: 29px; height: 29px; }
+
+.radar .surface { padding: 24px; }
+.radar-head { position: relative; display: flex; align-items: center; gap: 12px; margin-bottom: 18px; z-index: 1; }
+.radar-head h2 { font-size: 30px; letter-spacing: -.05em; }
+.radar-head > .button, .radar-head > .chip { margin-left: auto; }
+.export-menu { position: absolute; right: 0; top: 50px; background: #fff; padding: 6px; border: 1px solid #d3dbe8; border-radius: 12px; box-shadow: 0 12px 24px #0f172a30; }
+.export-menu .button { border-radius: 8px; background: #f0f4fb; }
+.radar-event { display: grid; grid-template-columns: 65px 1fr; gap: 14px; align-items: center; padding: 14px 16px; background: #edf1f6; border-radius: 13px; }
+.radar-event + .radar-event { margin-top: 9px; }
+.date { display: grid; justify-items: center; gap: 1px; padding: 8px; border-radius: 9px; background: #fff; color: #465672; font-size: 12px; font-weight: 670; }
+.date b { font-size: 25px; line-height: 1; color: var(--ink); }
+.radar-event h3 { font-size: 17px; margin-bottom: 5px; }
+.radar-event .chip { font-size: 11px; color: #8a4e00; background: #fff0d4; }
+.radar-event p { color: var(--muted); font-size: 13px; }
+.confirm-card .surface { display: flex; align-items: center; gap: 17px; padding: 16px 25px 16px 17px; border-radius: 999px; }
+.confirm-card .check-svg { width: 53px; height: 53px; color: #1baf7a; filter: drop-shadow(0 0 7px #1baf7a79); }
+.confirm-card h2 { font-size: 23px; letter-spacing: -.032em; }
+
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 12px; }
+.kpi, .chart { background: #fff; border: 1px solid var(--paper-line); border-radius: 12px; padding: 12px; }
+.kpi p { color: var(--muted); font-size: 12px; font-weight: 680; }
+.kpi b { display: block; margin-top: 5px; font-size: 26px; letter-spacing: -.045em; }
+.insight-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 9px; }
+.chart h3 { font-size: 16px; margin-bottom: 13px; letter-spacing: -.028em; }
+.chart-row { display: grid; grid-template-columns: 54px minmax(0, 1fr) 62px; gap: 7px; align-items: center; margin-top: 10px; font-size: 11px; }
+.chart-row b { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.chart-row small { color: var(--muted); font-size: inherit; font-weight: 500; }
+.chart-track { height: 10px; background: #eef1f6; border-radius: 999px; }
+.chart-track i { display: block; width: 100%; height: 100%; background: var(--bar); border-radius: inherit; transform-origin: left; }
+.skills .chart-row { grid-template-columns: 59px minmax(0, 1fr) 15px; }
+
+.outro h1 { position: absolute; left: 0; right: 0; top: 242px; text-align: center; font-size: 112px; letter-spacing: -.072em; font-weight: 760; }
+.lockup { position: absolute; inset: 288px 0 auto; display: grid; justify-items: center; }
+.lockup .logo svg { width: 92px; height: 92px; filter: drop-shadow(0 14px 18px #152a4a36); }
+.lockup h2 { margin: 10px 0 20px; font-size: 42px; letter-spacing: -.055em; }
+.domain { color: #fff; background: #0f172a; border: 1px solid #44506d; padding: 12px 25px; border-radius: 999px; font-size: 18px; font-weight: 670; box-shadow: 0 5px 34px #2563eb44, 0 7px 35px #d94e2837; }
+
+.cursor, .ripple { position: absolute; top: 0; left: 0; pointer-events: none; }
+.cursor { z-index: 3; filter: drop-shadow(0 2px 3px #090c1259); }
+.ripple { z-index: 2; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #5880e4; box-shadow: 0 0 0 1px #fff8; }
 </style>
 </head>
-<body>
-<div class="demo-stage" id="demo-stage">
-  <div class="demo-camera" id="demo-camera">
-    <div class="demo-window" id="demo-window">
-      <div class="app demo-app">
-        <aside class="cover" aria-label="Notebook">
-          <div class="demo-traffic-lights" aria-hidden="true">
-            <span class="tl-close"></span>
-            <span class="tl-min"></span>
-            <span class="tl-max"></span>
-          </div>
-          <div class="cover-label">
-            <span class="cover-logo">${logoSvg}</span>
-            <span class="cover-title">My Internship<br />Notebook</span>
-            <span class="cover-sub">Applications &amp; interviews</span>
-          </div>
-          <div class="cover-actions">
-            <button class="button primary cover-new" id="nav-new-btn" data-anchor="nav-new" type="button">
-              <span>+ New application</span><kbd>N</kbd>
-            </button>
-            <div class="cover-search">
-              <span>Search</span><kbd>Cmd+K</kbd>
-            </div>
-          </div>
-          <nav class="tabs" aria-label="Sections">
-            <a class="tab" id="nav-today" data-anchor="nav-today" style="--tab: var(--tab-today)"><span>Today</span></a>
-            <a class="tab" id="nav-board" data-anchor="nav-board" style="--tab: var(--tab-board)"><span>Board</span><b class="tab-count" id="nav-board-count"></b></a>
-            <a class="tab" id="nav-notebook" style="--tab: var(--tab-notebook)"><span>All pages</span><b class="tab-count" id="nav-page-count"></b></a>
-            <a class="tab" id="nav-insights" data-anchor="nav-insights" style="--tab: var(--tab-insights)"><span>Insights</span></a>
-          </nav>
-          <div class="cover-footer" id="demo-sidebar-footer">
-            <p class="storage-chip">Private to this browser</p>
-          </div>
-        </aside>
-        <div class="page-wrap">
-          <div class="binding" aria-hidden="true"></div>
-          <main class="page" id="demo-page">
-            <div class="demo-view-layer" id="demo-view-out" style="display:none;"></div>
-            <div class="demo-view-layer" id="demo-view-in"></div>
-          </main>
-        </div>
-      </div>
-
-      <div class="demo-modal-backdrop" id="demo-modal"></div>
-      <div class="demo-toast" id="demo-toast" style="display:none;"></div>
-    </div>
-  </div>
-
-  <div class="demo-ripple" id="demo-ripple" style="display:none;"></div>
-  <div class="demo-cursor" id="demo-cursor"></div>
-</div>
-
+<body><main></main>
 <script>
-(function () {
-  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-  const lerp = (a, b, t) => a + (b - a) * t;
-  const smoothstep = t => {
-    const x = clamp(t, 0, 1);
-    return x * x * (3 - 2 * x);
-  };
-  const quintOut = t => {
-    const x = clamp(t, 0, 1);
-    return 1 - Math.pow(1 - x, 5);
-  };
-  const quintInOut = t => {
-    const x = clamp(t, 0, 1);
-    return x < 0.5 ? 16 * Math.pow(x, 5) : 1 - Math.pow(-2 * x + 2, 5) / 2;
-  };
-  const cubicInOut = t => {
-    const x = clamp(t, 0, 1);
-    return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
-  };
-
-  // Analytical underdamped spring curve (0 -> 1 with slight natural Apple overshoot)
-  function springOut(t, stiffness = 240, damping = 20) {
-    if (t <= 0) return 0;
-    const w0 = Math.sqrt(stiffness);
-    const zeta = damping / (2 * w0);
-    if (zeta < 1) {
-      const wd = w0 * Math.sqrt(1 - zeta * zeta);
-      const decay = Math.exp(-zeta * w0 * t);
-      return 1 - decay * (Math.cos(wd * t) + (zeta * w0 / wd) * Math.sin(wd * t));
-    }
-    const decay = Math.exp(-w0 * t);
-    return 1 - decay * (1 + w0 * t);
-  }
-
-  const seg = (t, t0, t1, fn = cubicInOut) => fn(clamp((t - t0) / (t1 - t0), 0, 1));
-  const QUICK_URL = "https://boards.greenhouse.io/stripe/jobs/98765";
-  const CHAPTER = ${JSON.stringify(CHAPTERS)};
-  const AT = ${JSON.stringify(ACTIONS)};
-  const LOOP_END = ${LOOP_REST_START};
-  const VIEW_W = ${VIEWPORT_WIDTH}, VIEW_H = ${VIEWPORT_HEIGHT};
-  const WIN_W = ${WINDOW_WIDTH}, WIN_H = ${WINDOW_HEIGHT}, MARGIN = ${FRAME_MARGIN};
-  const STAGES = ["SAVED", "APPLIED", "INTERVIEW", "OFFER"];
-
-  // Contextual macOS cursors (Arrow, Text I-Beam, Open Grab Hand, Closed Grabbing Hand)
-  const CURSORS = {
-    arrow: {
-      hotspot: [4, 3],
-      svg: \`<svg viewBox="0 0 28 32" width="26" height="30" aria-hidden="true"><path d="M4.2 2.6 L22.5 14.2 L13.8 16.4 L18.2 25.4 L14.6 27.1 L10.2 18.1 L4.4 23.4 Z" fill="#0f172a" stroke="#ffffff" stroke-width="2.1" stroke-linejoin="round"/></svg>\`
-    },
-    ibeam: {
-      hotspot: [12, 15],
-      svg: \`<svg viewBox="0 0 24 30" width="22" height="28" aria-hidden="true"><path d="M8 4.5 h8 M12 4.5 v21 M8 25.5 h8" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" fill="none"/><path d="M8 4.5 h8 M12 4.5 v21 M8 25.5 h8" stroke="#0f172a" stroke-width="2" stroke-linecap="round" fill="none"/></svg>\`
-    },
-    grab: {
-      hotspot: [13, 13],
-      svg: \`<svg viewBox="0 0 28 28" width="26" height="26" aria-hidden="true"><path d="M10.5 13V6.5a1.6 1.6 0 0 1 3.2 0V12m0-4.5a1.6 1.6 0 0 1 3.2 0V12m0-3.5a1.6 1.6 0 0 1 3.2 0V13m0-1.5a1.5 1.5 0 0 1 3 0v5.3c0 4.2-2.9 7.2-7 7.2h-1.8c-2.6 0-4.6-1.3-6.1-3.4l-2.6-3.7a1.5 1.5 0 0 1 2.4-1.8l2 2.2V9.5a1.5 1.5 0 0 1 3 0" fill="#ffffff" stroke="#0f172a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>\`
-    },
-    grabbing: {
-      hotspot: [13, 14],
-      svg: \`<svg viewBox="0 0 28 28" width="26" height="26" aria-hidden="true"><path d="M9.5 13.5v-3a1.6 1.6 0 0 1 3.2 0v2m0-2.4a1.6 1.6 0 0 1 3.2 0v2.4m0-2a1.6 1.6 0 0 1 3.2 0v2.5m0-1.5a1.5 1.5 0 0 1 3 0v4.8c0 4.1-2.8 7-6.8 7h-1.8c-2.5 0-4.4-1.2-5.9-3.3l-2.1-3a1.5 1.5 0 0 1 2.4-1.8l1.6 1.6v-3.3z" fill="#ffffff" stroke="#0f172a" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg>\`
-    }
-  };
-
-  const DEMO = {
-    weekday: { label: "Tuesday, Nov 17", index: 1, sent: [2, 3], goal: 6 },
-    priorities: [
-      { date: "Wed Nov 18", time: "10 am", title: "Cedar Grove technical screen", note: "Remote · 45 min" },
-      { date: "Fri Nov 20", time: "Due", title: "Northwind application deadline", note: "Waterloo, ON · Backend Intern" }
-    ],
-    archived: { SAVED: 1, APPLIED: 7, INTERVIEW: 3, OFFER: 2 },
-    applications: [
-      { company: "Northwind", role: "Backend Intern", stage: "SAVED", skills: ["Python", "SQL"] },
-      { company: "Figma", role: "Product Design Intern", stage: "SAVED", skills: ["Figma"] },
-      { company: "Linear", role: "Software Intern", stage: "SAVED", skills: ["TypeScript"] },
-      { company: "Shopify", role: "Frontend Intern", stage: "APPLIED", skills: ["TypeScript", "React"] },
-      { company: "Datadog", role: "Platform Intern", stage: "APPLIED", skills: ["Go"] },
-      { company: "Ramp", role: "Product Engineer Intern", stage: "APPLIED", skills: ["TypeScript"] },
-      { company: "Cedar Grove", role: "ML Engineering Intern", stage: "INTERVIEW", skills: ["Python", "PyTorch"] },
-      { company: "Ada", role: "Data Engineer Intern", stage: "INTERVIEW", skills: ["Python", "SQL"] },
-      { company: "Vercel", role: "Web Platform Intern", stage: "INTERVIEW", skills: ["TypeScript"] },
-      { company: "Kitebird", role: "Platform Intern", stage: "OFFER", skills: ["Go"] }
-    ],
-    stripe: { company: "Stripe", role: "Software Engineer Intern", location: "Seattle, WA", skills: ["Python", "Go", "SQL"] },
-    openingTerm: "Summer 2027",
-    openings: [
-      { company: "Cloudflare", role: "Systems Engineer Intern", location: "Austin, TX", term: "Summer 2027", skills: ["Go"] },
-      { company: "Notion", role: "Product Engineer Intern", location: "New York, NY", term: "Fall 2027" },
-      { company: "Wealthsimple", role: "Software Developer Intern", location: "Toronto, ON", term: "Summer 2027" },
-      { company: "Fathom", role: "Data Engineering Intern", location: "Vancouver, BC", term: "Summer 2027" },
-      { company: "Sentry", role: "Developer Tools Intern", location: "Toronto, ON", term: "Summer 2027" },
-      { company: "Zipline", role: "Flight Software Intern", location: "South SF, CA", term: "Summer 2027" }
-    ],
-    prep: { practiced: 3, total: 6, score: 88 }
-  };
-  const featuredOpening = DEMO.openings[0];
-  const stripeSavedAt = AT.saveStripe + 0.15;
-  const percent = (part, total) => Math.round(100 * part / total);
-
-  function notebookAt(t) {
-    const active = [...DEMO.applications];
-    if (t >= stripeSavedAt) {
-      active.push({ ...DEMO.stripe, stage: t >= AT.dropStripe ? "INTERVIEW" : "APPLIED" });
-    }
-    if (t >= AT.saveOpening) active.push({ ...featuredOpening, stage: "SAVED" });
-    const counts = STAGES.map(stage => active.filter(app => app.stage === stage).length);
-    const funnel = STAGES.map((_, i) => STAGES.slice(i).reduce(
-      (total, stage, offset) => total + counts[i + offset] + DEMO.archived[stage], 0
-    ));
-    return { active, counts, funnel, total: funnel[0] };
-  }
-
-  function renderTodayView(t, { calendar = false } = {}) {
-    const { active, counts, funnel } = notebookAt(t);
-    const { weekday, priorities } = DEMO;
-    const sentThisWeek = weekday.sent.reduce((sum, sent) => sum + sent, 0);
-    const menuOpen = calendar && t >= AT.openExport && t < AT.downloadCalendar + 0.12;
-
-    return \`
-      <section class="view \${calendar ? "demo-calendar-view" : "demo-today-view"}">
-        <header class="view-head">
-          <div>
-            <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
-            <h1 class="view-title">\${calendar ? "Deadlines &amp; Calendar" : "Good morning, Jordan"}<span class="dot">.</span></h1>
-            <p class="view-sub">\${weekday.label} · \${priorities.length} priorities due this week</p>
-          </div>
-          \${calendar ? \`
-            <div class="demo-export">
-              <button class="button \${t >= AT.openExport - 0.25 && t < AT.openExport ? "is-hovered" : ""}" data-anchor="open-export" aria-expanded="\${menuOpen}" type="button">Export</button>
-              \${menuOpen ? \`<div class="card demo-export-menu">
-                <button class="button \${t >= AT.downloadCalendar - 0.25 ? "is-hovered" : ""}" data-anchor="download-calendar" type="button">Download calendar (.ics)</button>
-              </div>\` : ""}
-            </div>\` : ""}
-        </header>
-        <section class="card strip" style="margin-bottom: 14px">
-          <div class="strip-top">
-            <div class="strip-figure"><strong>\${active.length}</strong><span>active applications</span></div>
-            <div class="strip-rate">Response rate <b>\${percent(funnel[2], funnel[1])}%</b> (\${funnel[2]} of \${funnel[1]} sent)</div>
-          </div>
-          <div class="stack-bar">
-            \${STAGES.map((stage, i) => \`<span style="flex-grow:\${counts[i]}; --s: var(--st-\${stage.toLowerCase()})"></span>\`).join("")}
-          </div>
-        </section>
-        <div class="today-grid">
-          <section class="card upcoming-card \${calendar ? "is-hovered" : ""}" data-anchor="radar-card" style="grid-column: span 7">
-            <div class="card-head">
-              <div>
-                <h2 class="card-title">Deadline Radar</h2>
-                <p class="card-note">Upcoming interviews and closing dates</p>
-              </div>
-            </div>
-            <ul class="agenda">
-              \${priorities.map((item, i) => \`
-                <li class="agenda-day">
-                  <span class="agenda-date">\${item.date}</span>
-                  <div class="agenda-items">
-                    <div class="agenda-item" style="background: var(--paper-2)">
-                      <span class="agenda-kind" style="--s-bg: var(--st-\${i === 0 ? "interview" : "saved"}-bg)">\${item.time}</span>
-                      <div class="agenda-text"><strong>\${item.title}</strong><span>\${item.note}</span></div>
-                    </div>
-                  </div>
-                </li>\`).join("")}
-            </ul>
-            \${calendar ? '<p style="margin-top:16px"><span class="pill st-INTERVIEW">24 h and 2 h reminders</span></p>' : ""}
-          </section>
-          <section class="card goal-card" style="grid-column: span 5">
-            <div class="card-head">
-              <div>
-                <h2 class="card-title">Weekly Goal</h2>
-                <p class="card-note">Applications sent this week</p>
-              </div>
-            </div>
-            <div class="ring">
-              <svg viewBox="0 0 100 100" aria-hidden="true">
-                <circle class="ring-track" cx="50" cy="50" r="42"></circle>
-                <circle class="ring-fill" cx="50" cy="50" r="42" pathLength="100" stroke-dasharray="\${100 * sentThisWeek / weekday.goal} 100"></circle>
-              </svg>
-              <div class="ring-label"><strong>\${sentThisWeek} / \${weekday.goal}</strong><span>Sent</span></div>
-            </div>
-            <div class="week-dots">
-              \${[..."MTWTFSS"].map((day, i) => \`
-                <div class="week-dot \${i > weekday.index ? "future" : "has"} \${i === weekday.index ? "today" : ""}">
-                  <i>\${day}</i><span>\${weekday.sent[i] ?? ""}</span>
-                </div>\`).join("")}
-            </div>
-          </section>
-        </div>
-      </section>
-    \`;
-  }
-
-  function renderBoardView(t, { measureDropSlot = false } = {}) {
-    const isDragging = t >= AT.grabStripe && t < AT.dropStripe;
-    const dropped = t >= AT.dropStripe;
-    const filterPython = t >= AT.filterPython;
-    const { active } = notebookAt(t);
-    const matches = skill => active.filter(app => app.skills.includes(skill)).length;
-    const cards = filterPython ? active.filter(app => app.skills.includes("Python")) : active;
-
-    const dragP = seg(t, AT.grabStripe, AT.dropStripe, quintInOut);
-    const lift = isDragging ? Math.sin(clamp((t - AT.grabStripe) / 0.25, 0, 1) * Math.PI * 0.5) *
-      (1 - Math.pow(clamp((t - (AT.dropStripe - 0.18)) / 0.18, 0, 1), 2)) : 0;
-    const dragStartPt = ANCHORS["card-stripe-applied"];
-    const dragEndPt = ANCHORS["slot-interview"];
-    const sourceHeight = dragStartPt?.height ?? 0;
-    const slotGrow = measureDropSlot ? 1 : seg(t, AT.grabStripe, AT.grabStripe + 0.35, smoothstep);
-    const settle = seg(t, AT.dropStripe, AT.dropStripe + 0.15, smoothstep);
-    const interviewHeight = ANCHORS["card-stripe-interview"]?.height ?? sourceHeight;
-    const landingStyle = dropped && settle < 1
-      ? \`height:\${lerp(sourceHeight, interviewHeight, settle)}px; overflow:hidden;\` : "";
-    const stamp = clamp(springOut(t - AT.dropStripe, 320, 20), 0, 1.1);
-
-    const renderCard = (app, { ghost = false, style = "" } = {}) => {
-      const stripe = app.company === DEMO.stripe.company;
-      const hover = stripe && !ghost && (!dropped
-        ? t >= AT.grabStripe - 0.22
-        : t >= CHAPTER.prep - 0.25);
-      const anchor = stripe && !ghost ? \`data-anchor="card-stripe-\${dropped ? "interview" : "applied"}"\` : "";
-      const dragClass = ghost ? "demo-drag-card" : stripe && isDragging ? "drag-origin" : "";
-      return \`
-        <article class="app-card st-\${app.stage} \${dragClass} \${hover ? "is-hovered" : ""}" \${anchor} \${ghost ? 'aria-hidden="true"' : ""} style="\${style}">
-          <div class="app-card-top"><span class="app-company">\${app.company}</span></div>
-          <h3 class="app-role">\${app.role}</h3>
-          \${app.location ? \`<div class="app-meta"><span>\${app.location}</span></div>\` : ""}
-          <div class="chips">\${app.skills.map(skill => \`<span class="chip">\${skill}</span>\`).join("")}</div>
-          \${stripe && dropped ? \`<span class="demo-history-stamp" style="transform:scale(\${stamp.toFixed(3)}); opacity:\${clamp(stamp * 1.4, 0, 1).toFixed(2)}">Moved to Interview</span>\` : ""}
-        </article>\`;
-    };
-
-    const dragX = isDragging ? lerp(dragStartPt.x, dragEndPt.x, dragP) - pageOrigin.x : 0;
-    const dragY = isDragging ? lerp(dragStartPt.y, dragEndPt.y, dragP) - pageOrigin.y - Math.sin(dragP * Math.PI) * 26 : 0;
-    const ghostStyle = \`left:\${dragX}px; top:\${dragY}px; width:\${dragStartPt?.width}px; transform: translate(-50%, -50%) scale(\${1 + 0.048 * lift}) rotate(\${-1.8 * lift}deg)\`;
-
-    return \`
-      <section class="view demo-board-view">
-        <header class="view-head">
-          <div>
-            <p class="eyebrow" style="--tab: var(--tab-board)">Board</p>
-            <h1 class="view-title">Pipeline Board<span class="dot">.</span></h1>
-          </div>
-          <div class="filters" style="margin:0">
-            <button type="button" class="filter-chip" aria-pressed="\${!filterPython}">All (\${active.length})</button>
-            <button type="button" class="filter-chip \${t >= AT.filterPython - 0.25 && !filterPython ? "is-hovered" : ""}" data-anchor="chip-python" aria-pressed="\${filterPython}">Python (\${matches("Python")})</button>
-            <button type="button" class="filter-chip" aria-pressed="false">TypeScript (\${matches("TypeScript")})</button>
-          </div>
-        </header>
-        <div class="board">
-          \${STAGES.map(stage => {
-            const column = cards.filter(app => app.stage === stage);
-            column.sort((a, b) => Number(b.company === DEMO.stripe.company) - Number(a.company === DEMO.stripe.company));
-            const dropSlot = stage === "INTERVIEW" && (isDragging || measureDropSlot);
-            const slotSpace = sourceHeight + ${BOARD_CARD_GAP};
-            const padding = dropSlot ? slotSpace * slotGrow
-              : stage === "APPLIED" && dropped ? slotSpace * (1 - settle) : 0;
-            return \`<section class="column st-\${stage} \${isDragging && stage === "INTERVIEW" ? "drop" : ""}">
-              <div class="column-head"><span class="dot"></span><h2>\${stage}</h2><span class="count">\${column.length}</span></div>
-              <div class="column-cards" style="padding-top:\${padding}px">
-                \${dropSlot ? \`<div class="demo-drop-slot" data-anchor="slot-interview" style="height:\${sourceHeight * slotGrow}px; opacity:\${slotGrow.toFixed(2)}"></div>\` : ""}
-                \${column.length ? column.map(app => renderCard(app, {
-                  style: app.company === DEMO.stripe.company ? landingStyle : ""
-                })).join("") : '<p class="column-empty">No matches</p>'}
-              </div>
-            </section>\`;
-          }).join("")}
-        </div>
-        \${isDragging ? renderCard({ ...DEMO.stripe, stage: "APPLIED" }, { ghost: true, style: ghostStyle }) : ""}
-      </section>
-    \`;
-  }
-
-  function renderOpeningsView(t) {
-    const filtered = t >= AT.filterTerm;
-    const saved = t >= AT.saveOpening;
-    const { active } = notebookAt(t);
-    const summerOpenings = DEMO.openings.filter(opening => opening.term === DEMO.openingTerm);
-    const openings = filtered ? summerOpenings : DEMO.openings;
-    return \`
-      <section class="view demo-openings-view">
-        <header class="view-head">
-          <div>
-            <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
-            <h1 class="view-title">Internship Openings<span class="dot">.</span></h1>
-            <p class="view-sub">\${openings.length} openings · \${active.length} active applications</p>
-          </div>
-          <button class="button \${t >= CHAPTER.calendar - 0.25 ? "is-hovered" : ""}" data-anchor="nav-calendar" type="button">Deadline Radar</button>
-        </header>
-        <div class="demo-openings-feed">
-          <div class="filters" style="margin-bottom: 12px">
-            <button class="filter-chip" aria-pressed="\${!filtered}" type="button">All terms (\${DEMO.openings.length})</button>
-            <button class="filter-chip \${!filtered && t >= AT.filterTerm - 0.25 ? "is-hovered" : ""}" data-anchor="filter-term" aria-pressed="\${filtered}" type="button">\${DEMO.openingTerm} (\${summerOpenings.length})</button>
-          </div>
-          <div class="card demo-openings-list">
-            \${openings.map(opening => {
-              const featured = opening === featuredOpening;
-              const isSaved = featured && saved;
-              const hover = featured && !isSaved && t >= AT.saveOpening - 0.25;
-              return \`
-                <article class="demo-opening-row">
-                  <strong>\${opening.company}</strong>
-                  <span>\${opening.role}</span>
-                  <small>\${opening.location}</small>
-                  <small>\${opening.term}</small>
-                  <button class="button small \${hover ? "is-hovered" : ""}" \${featured ? 'data-anchor="save-opening"' : ""} \${isSaved ? 'aria-pressed="true"' : ""} type="button">\${isSaved ? "Saved" : "Save"}</button>
-                </article>\`;
-            }).join("")}
-          </div>
-        </div>
-      </section>
-    \`;
-  }
-
-  let prepMockHeight = 0;
-  let prepScroll = 0;
-  function renderEntryPrepView(t, scrollTime = t) {
-    const { company, role, location, skills } = DEMO.stripe;
-    const { practiced, total, score } = DEMO.prep;
-    const marked = t >= AT.markPracticed;
-    const barWidth = 100 * (practiced + seg(t, AT.markPracticed, AT.markPracticed + 0.5, quintOut)) / total;
-    const mockStart = AT.markPracticed + 0.18;
-    const mockSpring = clamp(springOut(t - mockStart, 260, 21), 0, 1.06);
-    const mockProgress = seg(t, mockStart, mockStart + 1.05, smoothstep);
-    const mockScore = Math.round(lerp(62, score, mockProgress));
-    const contextOpacity = 1 - seg(t, CHAPTER.prep + 0.4, PREP_SCROLL_START, smoothstep);
-    const detailClass = FOCUS_SELECTORS.prep === PREP_DETAIL ? " prep-detail" : "";
-    const questions = [
-      { text: "Design an idempotent webhook delivery queue with retries in Go.", done: true },
-      { text: "How would you trace a slow SQL query under production load?", done: false },
-      { text: "Tell me about a system bottleneck you diagnosed and resolved (STAR).", done: marked, featured: true }
-    ];
-
-    return \`
-      <article class="sheet-page demo-prep-page\${detailClass}" style="padding: 18px 28px 22px 76px; transform: translateY(\${-prepScrollOffset(scrollTime)}px); --prep-context-opacity: \${contextOpacity}; --prep-context-visibility: \${contextOpacity ? "visible" : "hidden"}">
-        <div class="entry-head">
-          <span class="entry-company">\${company}</span>
-          <h1 class="entry-role" style="font-size: 1.78rem">\${role}</h1>
-        </div>
-        <div class="stepper">
-          <div class="steps">
-            <div class="step done st-SAVED"><span>Saved</span></div>
-            <div class="step done st-APPLIED"><span>Applied</span></div>
-            <div class="step current st-INTERVIEW"><span>Interview</span></div>
-            <div class="step st-OFFER"><span>Offer</span></div>
-          </div>
-        </div>
-        <div class="entry-fields">
-          <div class="line-field"><span>Location</span><div style="padding:3px 0; font-weight:600">\${location}</div></div>
-          <div class="line-field"><span>Skills</span><div style="padding:3px 0; font-weight:600">\${skills.join(", ")}</div></div>
-        </div>
-        <section class="prep" style="margin-top: 8px; padding-top: 12px">
-          <div class="prep-head">
-            <div>
-              <h2 class="card-title">Role-matched interview prep</h2>
-              <p class="prep-sub">Featured behavioral and backend prompts</p>
-            </div>
-            <span class="prep-summary">\${practiced + Number(marked)} of \${total} practiced</span>
-          </div>
-          <div class="prep-progress">
-            <div class="prep-bar"><i style="width:\${barWidth.toFixed(1)}%"></i></div>
-          </div>
-          <div class="prep-group">
-            <ul class="prep-list" style="padding: 4px 14px">
-              \${questions.map(question => \`
-                <li class="prep-q \${question.done ? "is-practiced" : ""}" \${question.featured ? 'data-focus="prep-question"' : ""}>
-                  <span class="prep-text">\${question.text}</span>
-                  <div class="prep-actions">
-                    <button type="button" \${question.featured ? 'data-anchor="btn-mark-practiced"' : ""}
-                      class="prep-mark practiced \${question.featured && t >= AT.markPracticed - 0.25 && !marked ? "is-hovered" : ""}" aria-pressed="\${question.done}">\${question.done ? "Practiced" : "Mark practiced"}</button>
-                  </div>
-                </li>\`).join("")}
-            </ul>
-          </div>
-          <div class="demo-mock-card" style="min-height: \${prepMockHeight}px">
-            <div class="demo-mock-score-box">
-              <strong style="white-space:nowrap">\${t >= mockStart ? mockScore + " / 100" : "Mock"}</strong>
-              <span>\${t >= mockStart ? "Readiness" : "Interview"}</span>
-            </div>
-            <div>
-              <strong style="font-size: 0.94rem; color: var(--ink)">Timed mock interview</strong>
-              <div class="demo-mock-metrics" style="transform: translateY(\${(1 - mockSpring) * 5}px)">
-                \${t >= mockStart ? \`
-                  <span class="demo-metric-pill good">STAR structure complete</span>
-                  <span class="demo-metric-pill">\${Math.round(lerp(122, 138, mockProgress))} wpm</span>
-                  <span class="demo-metric-pill">0 filler phrases</span>\` : '<span class="demo-metric-pill">Pace and STAR feedback</span>'}
-              </div>
-            </div>
-          </div>
-        </section>
-      </article>
-    \`;
-  }
-
-  function renderInsightsView(t, { active, funnel, total } = notebookAt(t)) {
-    const [, sent, interview, offers] = funnel;
-    const responseRate = percent(interview, sent);
-    const barProgress = seg(t, CHAPTER.insights + 0.28, CHAPTER.insights + 1.28, quintOut);
-    const barWidth = (value, max) => 100 * value / max * barProgress;
-    const skillCounts = new Map();
-    for (const app of active.filter(app => app.stage === "INTERVIEW" || app.stage === "OFFER")) {
-      for (const skill of app.skills) skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1);
-    }
-    const topSkills = [...skillCounts].sort((a, b) => b[1] - a[1]).slice(0, 4);
-
-    return \`
-      <section class="view demo-insights-view">
-        <header class="view-head">
-          <div>
-            <p class="eyebrow" style="--tab: var(--tab-insights)">Insights</p>
-            <h1 class="view-title">Search Insights<span class="dot">.</span></h1>
-            <p class="view-sub">Conversion rates and top skills across your notebook</p>
-          </div>
-        </header>
-        <section class="kpis">
-          <article class="card kpi"><p>Applications</p><strong>\${total}</strong><span>\${active.length} active</span></article>
-          <article class="card kpi"><p>Response rate</p><strong>\${responseRate}%</strong><span>\${interview} of \${sent} sent</span></article>
-          <article class="card kpi"><p>Interviews</p><strong>\${interview}</strong><span>\${responseRate}% of sent</span></article>
-          <article class="card kpi"><p>Offers</p><strong>\${offers}</strong><span>\${percent(offers, sent)}% of sent</span></article>
-          <article class="card kpi"><p>Mock score</p><strong>\${DEMO.prep.score}</strong><span>Out of 100</span></article>
-        </section>
-        <div class="insight-grid">
-          <section class="card" data-anchor="funnel-card">
-            <div class="card-head"><div><h2 class="card-title">Conversion Funnel</h2><p class="card-note">Share of all applications by stage reached</p></div></div>
-            <div class="funnel">
-              \${["Saved", "Applied", "Interview", "Offer"].map((label, i) => {
-                const share = percent(funnel[i], total);
-                return \`<div class="funnel-row">
-                  <span>\${label}</span>
-                  <div class="funnel-track"><div class="funnel-bar" style="width:\${barWidth(funnel[i], total)}%; background: var(--st-\${label.toLowerCase()})"></div></div>
-                  <span class="funnel-value">\${funnel[i]} <small>(\${share}%)</small></span>
-                </div>\`;
-              }).join("")}
-            </div>
-          </section>
-          <section class="card">
-            <div class="card-head"><div><h2 class="card-title">Top Skills in Interviews</h2><p class="card-note">Most common tags among active interviews and offers</p></div></div>
-            <div class="skill-bars">
-              \${topSkills.map(([skill, count]) => \`<div class="skill-bar"><span>\${skill}</span><i style="width:\${barWidth(count, topSkills[0][1])}%"></i><b>\${count}</b></div>\`).join("")}
-            </div>
-          </section>
-        </div>
-      </section>
-    \`;
-  }
-
-  function renderModal(t, { forceOpen = false } = {}) {
-    const modal = document.getElementById("demo-modal");
-    const openT = AT.newPage;
-    const closeT = AT.saveStripe;
-
-    if (!forceOpen && (t < openT || t >= closeT + 0.34)) {
-      modal.style.opacity = "0";
-      modal.innerHTML = "";
-      return;
-    }
-
-    let backdropOpacity = 1;
-    let cardScale = 1;
-    let cardY = 0;
-
-    if (!forceOpen) {
-      if (t < openT + 0.36) {
-        const dt = t - openT;
-        const sp = springOut(dt, 280, 22);
-        backdropOpacity = clamp(dt / 0.22, 0, 1);
-        cardScale = lerp(0.92, 1, sp);
-        cardY = lerp(14, 0, sp);
-      } else if (t >= closeT) {
-        const p = seg(t, closeT, closeT + 0.32, quintOut);
-        backdropOpacity = 1 - p;
-        cardScale = lerp(1, 0.94, p);
-        cardY = lerp(0, 10, p);
-      }
-    }
-
-    const focused = !forceOpen && t >= AT.focusLink && t < AT.fill;
-    const pasted = forceOpen || t >= AT.pasteLink;
-
-    const fillClickT = AT.fill;
-    const filled = forceOpen || t >= fillClickT + 0.04;
-    const fillHover = !forceOpen && t >= fillClickT - 0.17 && t < fillClickT;
-    const saveHover = !forceOpen && t >= closeT - 0.35 && t < closeT;
-
-    const fieldReveal = (idx) => {
-      if (forceOpen) return { op: 1, flash: false };
-      const start = fillClickT + 0.05 + idx * 0.065;
-      if (t < start) return { op: 0, flash: false };
-      return {
-        op: clamp((t - start) / 0.16, 0, 1),
-        flash: t >= start && t < start + 0.72
-      };
-    };
-
-    const fields = [
-      { label: "Company", val: DEMO.stripe.company, empty: "e.g. Shopify", idx: 0 },
-      { label: "Role", val: DEMO.stripe.role, empty: "e.g. Backend Intern", idx: 1 },
-      { label: "Location", val: DEMO.stripe.location, empty: "City or Remote", idx: 2 },
-      { label: "Skills", val: DEMO.stripe.skills.join(", "), empty: "Comma separated", idx: 3 }
-    ];
-
-    modal.style.opacity = backdropOpacity.toFixed(3);
-    modal.innerHTML = \`
-      <div class="demo-modal-card" style="transform: translateY(\${cardY.toFixed(1)}px) scale(\${cardScale.toFixed(4)});">
-        <header class="sheet-head">
-          <div>
-            <p class="eyebrow">New page</p>
-            <h2>Add an application</h2>
-          </div>
-        </header>
-        <div class="sheet-body">
-          <div class="quickfill-bar">
-            <span class="field-label">Quick fill from link or job text</span>
-            <div class="quickfill-row">
-              <div class="demo-quickfill-display \${focused ? "is-focused" : ""}" data-anchor="quickfill-input">
-                \${pasted ? \`<span>\${QUICK_URL}</span>\` : '<span class="demo-quickfill-placeholder">Paste a job URL or title...</span>'}
-                \${focused && pasted ? '<span class="demo-typing-caret"></span>' : ""}
-              </div>
-              <button class="button small \${fillHover ? "is-hovered" : ""}" data-anchor="quickfill-fill" type="button">Fill</button>
-            </div>
-          </div>
-          <div class="field-grid">
-            \${fields.map(f => {
-              const rev = fieldReveal(f.idx);
-              const showVal = filled && rev.op > 0;
-              return \`
-                <div class="field">
-                  <span class="field-label">\${f.label}</span>
-                  <div class="demo-field-box \${showVal ? (rev.flash ? "demo-autofill-flash" : "") : "is-empty"}" style="\${showVal && rev.op < 1 ? \`opacity:\${rev.op.toFixed(2)}; transform:translateY(\${((1 - rev.op) * 4).toFixed(1)}px);\` : ""}">\${showVal ? f.val : f.empty}</div>
-                </div>
-              \`;
-            }).join("")}
-          </div>
-        </div>
-        <footer class="sheet-foot">
-          <button class="button ghost" type="button">Cancel</button>
-          <button class="button primary \${saveHover ? "is-hovered" : ""}" data-anchor="modal-save" type="button">Save to notebook</button>
-        </footer>
-      </div>
-    \`;
-  }
-
-  const WIN_LEFT = (VIEW_W - WIN_W) / 2;
-  const WIN_TOP = (VIEW_H - WIN_H) / 2;
-  const VIEW_TRANSITION_SEC = 0.32;
-  const SWITCH_LEAD_SEC = 0.3;
-  const BOARD_APPROACH = CHAPTER.board + VIEW_TRANSITION_SEC + 0.05;
-  const PYTHON_APPROACH = 7.68;
-  const BRAND_TEXT = ".cover-title, .cover-sub";
-  const PREP_FULL = ".demo-prep-page :is(.prep-group, .demo-mock-card)";
-  const PREP_DETAIL = '.demo-prep-page :is([data-focus="prep-question"], .demo-mock-card)';
-  const PREP_SCROLL_START = CHAPTER.prep + 0.7;
-  const PREP_SCROLL_END = CHAPTER.prep + 1.55;
-  const PREP_HOLD_END = 13.97;
-  const FOCUS_SELECTORS = {
-    overview: "#demo-window",
-    brand: BRAND_TEXT,
-    "quick-fill": "#demo-modal .demo-modal-card, .demo-today-view .view-head > div",
-    prep: PREP_FULL,
-    export: BRAND_TEXT + ', .demo-calendar-view .view-head, [data-anchor="radar-card"], .demo-export-menu'
-  };
-
-  // [Time, target scale, focus].
-  const CAMERA_KEYS = [
-    [0, 1, "overview"],
-    [AT.newPage, 1, "overview"],
-    [1.92, 1.25, "quick-fill"],
-    [3.20, 1.25, "quick-fill"],
-    [4.60, 1, "overview"],
-    [PREP_SCROLL_END, 1, "overview"],
-    [12.75, 1.30, "prep"],
-    [13.36, 1.30, "prep"],
-    [14.66, 1, "overview"],
-    [21.10, 1, "overview"],
-    [22.36, 1.25, "export"],
-    [22.95, 1.25, "export"],
-    [24.30, 1, "overview"],
-    [LOOP_END, 1, "overview"]
-  ];
-  const FOCUS_RECTS = {};
-
-  function enclosingRect(rects) {
-    return {
-      left: Math.min(...rects.map(r => r.left)),
-      top: Math.min(...rects.map(r => r.top)),
-      right: Math.max(...rects.map(r => r.right)),
-      bottom: Math.max(...rects.map(r => r.bottom))
-    };
-  }
-
-  function focusRect(name, root = document) {
-    const rects = [...root.querySelectorAll(FOCUS_SELECTORS[name])].filter(visible)
-      .map(el => el.getBoundingClientRect());
-    return rects.length ? enclosingRect(rects) : null;
-  }
-
-  function focusFit(rect) {
-    return Math.min(
-      (VIEW_W - 2 * ${FOCUS_MARGIN}) / (rect.right - rect.left),
-      (VIEW_H - 2 * ${FOCUS_MARGIN}) / (rect.bottom - rect.top)
-    );
-  }
-
-  function prepSelector(finalRect) {
-    return focusFit(finalRect) < 1.2 ? PREP_DETAIL : PREP_FULL;
-  }
-
-  function prepScrollOffset(t) {
-    return prepScroll * seg(t, PREP_SCROLL_START, PREP_SCROLL_END, quintInOut);
-  }
-
-  function verticalAim(rect, scale, offsetY = 0) {
-    const margin = ${FOCUS_MARGIN} + 0.01;
-    const room = VIEW_H - WIN_H * scale;
-    const minRoom = Math.min(room * 0.005, room * 0.995);
-    const maxRoom = Math.max(room * 0.005, room * 0.995);
-    const minAim = margin - (rect.top - WIN_TOP) * scale;
-    const maxAim = VIEW_H - margin - (rect.bottom - WIN_TOP) * scale;
-    const centerY = (rect.top + rect.bottom) / 2 + offsetY;
-    return clamp(clamp(VIEW_H / 2 - (centerY - WIN_TOP) * scale, minAim, maxAim), minRoom, maxRoom);
-  }
-
-  function cameraKeyPoses() {
-    return CAMERA_KEYS.map(([time, targetScale, focus]) => {
-      const rect = FOCUS_RECTS[focus];
-      const fit = focusFit(rect);
-      const scale = Math.min(targetScale, fit - 0.0001);
-      const room = VIEW_H - WIN_H * scale;
-      const brandAim = 1 - (FOCUS_RECTS.brand.top - WIN_TOP) * scale;
-      const aim = Math.max(verticalAim(rect, scale, focus === "prep" ? 0 : -VIEW_H), brandAim);
-      const vertical = focus === "overview" || room === 0 ? 0.5 : aim / room;
-      return { time, scale, fit, focus, vertical };
-    });
-  }
-
-  let cameraPoses;
-  function computeCamera(t) {
-    const i = cameraPoses.findLastIndex(key => key.time <= t);
-    const a = cameraPoses[i];
-    const b = cameraPoses[i + 1] ?? a;
-    // A monotone cubic with zero tangents joins each move to its neighboring holds.
-    const p = a === b ? 0 : seg(t, a.time, b.time, smoothstep);
-    const scale = Math.exp(lerp(Math.log(a.scale), Math.log(b.scale), p));
-    const close = a.focus === "overview" ? b : a;
-    const blend = close.scale > 1 ? seg(scale, 1, Math.min(1.1, close.scale), smoothstep) : 0;
-    const horizontal = lerp(0.5, 0.02, blend);
-    const vertical = lerp(0.5, close.vertical, blend);
-    // Align matching window and stage anchors so the zoom moves around its focal point.
-    const tx = VIEW_W * horizontal - (WIN_LEFT + WIN_W * horizontal) * scale;
-    const ty = VIEW_H * vertical - (WIN_TOP + WIN_H * vertical) * scale;
-    return { scale, tx, ty, focus: scale <= 1.02 ? "overview" : close.focus };
-  }
-
-  const ANCHORS = {};
-  let pageOrigin;
-  function measureAnchors() {
-    const view = document.getElementById("demo-view-in");
-    const pageRect = document.getElementById("demo-page").getBoundingClientRect();
-    pageOrigin = { x: pageRect.left, y: pageRect.top };
-
-    const capture = (root, ...names) => {
-      for (const name of names) {
-        const el = root.querySelector('[data-anchor="' + name + '"]');
-        const r = el?.getBoundingClientRect();
-        if (!r?.width || !r.height) throw new Error("Missing cursor anchor: " + name);
-        ANCHORS[name] = {
-          x: r.left + r.width / 2, y: r.top + r.height / 2,
-          left: r.left, top: r.top, width: r.width, height: r.height
-        };
-      }
-    };
-
-    const captureFocus = (...names) => {
-      for (const name of names) {
-        const current = focusRect(name);
-        if (!current) throw new Error("Missing camera focus: " + name);
-        const previous = FOCUS_RECTS[name];
-        FOCUS_RECTS[name] = previous ? enclosingRect([previous, current]) : current;
-      }
-    };
-    captureFocus("overview", "brand");
-    capture(document, "nav-new", "nav-board", "nav-today", "nav-insights");
-    view.innerHTML = renderTodayView(0);
-    renderModal(0, { forceOpen: true });
-    capture(document, "quickfill-input", "quickfill-fill", "modal-save");
-    captureFocus("quick-fill");
-    renderModal(0);
-
-    view.innerHTML = renderBoardView(CHAPTER.board);
-    capture(view, "card-stripe-applied", "chip-python");
-    view.innerHTML = renderBoardView(CHAPTER.board, { measureDropSlot: true });
-    capture(view, "slot-interview");
-    view.innerHTML = renderBoardView(AT.filterPython);
-    capture(view, "card-stripe-interview");
-    view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
-    prepMockHeight = view.querySelector(".demo-mock-card").getBoundingClientRect().height;
-    const fullPrep = focusRect("prep", view);
-    if (!fullPrep) throw new Error("Missing camera focus: prep");
-    FOCUS_SELECTORS.prep = prepSelector(fullPrep);
-    const finalPrep = focusRect("prep", view);
-    if (!finalPrep) throw new Error("Missing settled camera focus: prep");
-    prepScroll = Math.max(0, (finalPrep.top + finalPrep.bottom - VIEW_H) / 2);
-    view.innerHTML = renderEntryPrepView(PREP_HOLD_END);
-    captureFocus("prep");
-    view.innerHTML = renderEntryPrepView(CHAPTER.prep, PREP_HOLD_END);
-    capture(view, "btn-mark-practiced");
-    captureFocus("prep");
-    view.innerHTML = renderEntryPrepView(AT.markPracticed + 0.18, PREP_HOLD_END);
-    captureFocus("prep");
-    view.innerHTML = renderOpeningsView(AT.filterTerm);
-    capture(view, "filter-term", "save-opening", "nav-calendar");
-    view.innerHTML = renderTodayView(AT.openExport, { calendar: true });
-    capture(view, "open-export", "download-calendar", "radar-card");
-    captureFocus("export");
-    view.innerHTML = renderInsightsView(CHAPTER.insights);
-    capture(view, "funnel-card");
-  }
-
-  function pt(name, dx = 0, dy = 0) {
-    const a = ANCHORS[name];
-    return { x: a.x + dx, y: a.y + dy, anchor: name };
-  }
-
-  function quadBezier(p0, p1, t, arcSign = 1) {
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 4) return { x: lerp(p0.x, p1.x, t), y: lerp(p0.y, p1.y, t) };
-    const offset = Math.min(44, dist * 0.16) * arcSign;
-    const cx = (p0.x + p1.x) / 2 + (-dy / dist) * offset;
-    const cy = (p0.y + p1.y) / 2 + (dx / dist) * offset;
-    const u = 1 - t;
-    return {
-      x: u * u * p0.x + 2 * u * t * cx + t * t * p1.x,
-      y: u * u * p0.y + 2 * u * t * cy + t * t * p1.y
-    };
-  }
-
-  const REST = { x: 740, y: 380 };
-  const CLIPPER_READ = { x: 640, y: 455 };
-  const PREP_READ = { x: 625, y: 515 };
-  const OPENINGS_READ = { x: 705, y: 555 };
-  const CALENDAR_READ = { x: 605, y: 500 };
-  let cursorStops;
-
-  function buildCursorTimeline() {
-    // Each stop is [arrival, departure, target, cursor, arc direction to next stop].
-    return [
-      [0, 0, REST, "arrow", 1],
-      [AT.newPage - 0.14, AT.newPage + 0.04, pt("nav-new"), "arrow", -1],
-      [AT.focusLink - 0.03, 1.98, pt("quickfill-input", -30), "ibeam", -1],
-      [AT.fill - 0.14, AT.fill + 0.06, pt("quickfill-fill"), "arrow", 1],
-      [3.10, 3.10, CLIPPER_READ, "arrow", 1],
-      [AT.saveStripe - 0.35, AT.saveStripe + 0.06, pt("modal-save"), "arrow", -1],
-      [CHAPTER.board - 0.14, BOARD_APPROACH, pt("nav-board"), "arrow", 1],
-      [AT.grabStripe - 0.25, AT.grabStripe, pt("card-stripe-applied"), "grab", 0],
-      [AT.dropStripe, PYTHON_APPROACH, pt("slot-interview"), "grab", -1],
-      [AT.filterPython - 0.21, AT.filterPython + 0.15, pt("chip-python"), "arrow", 1],
-      [AT.openStripe - 0.27, AT.openStripe + 0.11, pt("card-stripe-interview"), "arrow", -1],
-      [AT.markPracticed - 0.26, AT.markPracticed + 0.1, pt("btn-mark-practiced"), "arrow", 1],
-      [13.5, 14.27, PREP_READ, "arrow", -1],
-      [CHAPTER.openings - 0.18, CHAPTER.openings + 0.19, pt("nav-today"), "arrow", 1],
-      [AT.filterTerm - 0.25, AT.filterTerm + 0.15, pt("filter-term"), "arrow", -1],
-      [AT.saveOpening - 0.25, AT.saveOpening + 0.16, pt("save-opening"), "arrow", 1],
-      [19.0, 19.4, OPENINGS_READ, "arrow", -1],
-      [CHAPTER.calendar - 0.2, CHAPTER.calendar + 0.12, pt("nav-calendar"), "arrow", -1],
-      [AT.openExport - 0.25, AT.openExport + 0.12, pt("open-export"), "arrow", 1],
-      [AT.downloadCalendar - 0.25, AT.downloadCalendar + 0.12, pt("download-calendar"), "arrow", 1],
-      [23.45, 23.95, pt("radar-card", 0, -8), "arrow", -1],
-      [24.05, 24.15, CALENDAR_READ, "arrow", -1],
-      [CHAPTER.insights - 0.2, CHAPTER.insights + 0.18, pt("nav-insights"), "arrow", 1],
-      [26.32, 27.42, pt("funnel-card", -20, 10), "arrow", -1],
-      [28.52, LOOP_END, REST, "arrow", 0]
-    ];
-  }
-
-  const CLICKS = [
-    [AT.newPage, "nav-new"], [AT.focusLink, "quickfill-input", -30],
-    [AT.fill, "quickfill-fill"], [AT.saveStripe, "modal-save"],
-    [CHAPTER.board, "nav-board"], [AT.grabStripe, "card-stripe-applied"], [AT.dropStripe, "slot-interview"],
-    [AT.filterPython, "chip-python"], [AT.openStripe, "card-stripe-interview"],
-    [AT.markPracticed, "btn-mark-practiced"], [CHAPTER.openings, "nav-today"],
-    [AT.filterTerm, "filter-term"], [AT.saveOpening, "save-opening"],
-    [CHAPTER.calendar, "nav-calendar"], [AT.openExport, "open-export"],
-    [AT.downloadCalendar, "download-calendar"], [CHAPTER.insights, "nav-insights"]
-  ];
-
-  function cursorState(t) {
-    const click = CLICKS.find(([time]) => t >= time - 0.06 && t <= time + 0.14);
-    const pressDip = click ? 1 - 0.16 * clamp(t < click[0]
-      ? (t - click[0] + 0.06) / 0.06
-      : 1 - (t - click[0]) / 0.14, 0, 1) : 1;
-
-    for (let i = 0; i < cursorStops.length; i++) {
-      const [arrival, departure, pos, kind, sign] = cursorStops[i];
-      if (t >= arrival && t <= departure) return { ...pos, kind, scale: pressDip };
-      const next = cursorStops[i + 1];
-      if (!next || t < departure || t >= next[0]) continue;
-      const p = seg(t, departure, next[0], quintInOut);
-      const dest = next[2];
-      const dragging = departure === AT.grabStripe;
-      const moved = dragging
-        ? { x: lerp(pos.x, dest.x, p), y: lerp(pos.y, dest.y, p) - Math.sin(p * Math.PI) * 26 }
-        : quadBezier(pos, dest, p, sign);
-      return { ...moved, kind: dragging ? "grabbing" : "arrow", scale: pressDip };
-    }
-    return { ...REST, kind: "arrow", scale: 1 };
-  }
-
-  function activeRipple(t) {
-    const click = CLICKS.find(([time]) => t >= time && t < time + 0.42);
-    if (!click) return null;
-    const [time, name, dx] = click;
-    const p = seg(t, time, time + 0.42, quintOut);
-    return { ...pt(name, dx), scale: 0.45 + p * 1.1, opacity: (1 - p) * 0.9 };
-  }
-
-  const SCENES = [
-    [CHAPTER.clipper, "today", renderTodayView],
-    [CHAPTER.board, "board", renderBoardView],
-    [CHAPTER.prep, "board", renderEntryPrepView],
-    [CHAPTER.openings, "today", renderOpeningsView],
-    [CHAPTER.calendar, "today", t => renderTodayView(t, { calendar: true })],
-    [CHAPTER.insights, "insights", renderInsightsView]
-  ];
-  const TOASTS = [
-    [stripeSavedAt, 4.95, DEMO.stripe.company + " saved to notebook"],
-    [AT.saveOpening, 19.10, featuredOpening.company + " saved to notebook"],
-    [AT.downloadCalendar, 24.55, "Calendar file with 24 h and 2 h reminders"]
-  ];
-
-  let lastCursorKind = "";
-  const sceneTime = t => t >= LOOP_END ? 0 : t;
-  window.__setDemoTime = function (t) {
-    t = sceneTime(t);
-    const viewOut = document.getElementById("demo-view-out");
-    const viewIn = document.getElementById("demo-view-in");
-    const navNew = document.getElementById("nav-new-btn");
-    const toast = document.getElementById("demo-toast");
-    const sceneIndex = SCENES.findLastIndex(([start]) => t >= start);
-    const [start, section, render] = SCENES[sceneIndex];
-    const notebook = notebookAt(t);
-
-    document.getElementById("nav-board-count").textContent = notebook.active.length;
-    document.getElementById("nav-page-count").textContent = notebook.total;
-    const nextSection = SCENES[sceneIndex + 1];
-    for (const name of ["today", "board", "insights"]) {
-      const tab = document.getElementById("nav-" + name);
-      if (name === section) tab.setAttribute("aria-current", "page");
-      else tab.removeAttribute("aria-current");
-      tab.classList.toggle("is-hovered", name !== section && name === nextSection?.[1] && t >= nextSection[0] - 0.18);
-    }
-    navNew.classList.toggle("is-hovered", t >= AT.newPage - 0.14 && t < AT.newPage + 0.04);
-
-    const transitionEnd = start + VIEW_TRANSITION_SEC;
-    const isTransitioning = sceneIndex > 0 && t < transitionEnd;
-    const dissolving = t >= AT.dissolve;
-    const progress = dissolving ? seg(t, AT.dissolve, LOOP_END, smoothstep)
-      : isTransitioning ? seg(t, start, transitionEnd, quintOut) : 1;
-    const content = render === renderInsightsView ? render(t, notebook) : render(t);
-    viewOut.style.display = isTransitioning || dissolving ? "block" : "none";
-    viewOut.innerHTML = dissolving ? content
-      : isTransitioning ? SCENES[sceneIndex - 1][2](start - 1 / ${FPS}) : "";
-    viewOut.style.opacity = dissolving ? 1 : 1 - progress;
-    viewOut.style.transform = isTransitioning ? \`translateY(\${-8 * progress}px)\` : "none";
-    viewIn.innerHTML = dissolving ? renderTodayView(0) : content;
-    viewIn.style.opacity = progress;
-    viewIn.style.background = dissolving ? "inherit" : "";
-    viewIn.style.transform = isTransitioning ? \`translateY(\${10 * (1 - progress)}px)\` : "none";
-
-    const camera = document.getElementById("demo-camera");
-    const cam = computeCamera(t);
-    const windowBottom = (WIN_TOP + WIN_H) * cam.scale + cam.ty;
-    const footerBottom = windowBottom - (1 + ${SIDEBAR_BOTTOM_PADDING}) * cam.scale;
-    const footerOffset = Math.min(0, (VIEW_H - MARGIN - 1 - footerBottom) / cam.scale);
-    document.getElementById("demo-sidebar-footer").style.transform = \`translateY(\${footerOffset}px)\`;
-    const message = TOASTS.find(([from, until]) => t >= from && t < until);
-    toast.style.display = message ? "flex" : "none";
-    if (message) {
-      const [from, until, label] = message;
-      const rise = springOut(t - from, 280, 22);
-      const fade = seg(t, until - 0.28, until, quintOut);
-      const riseOffset = (1 - rise) * 12;
-      const right = (WIN_LEFT + WIN_W) * cam.scale + cam.tx;
-      if (toast.textContent !== label) toast.textContent = label;
-      toast.style.opacity = clamp(rise * 1.4, 0, 1) * (1 - fade);
-      toast.style.right = \`\${Math.max(20, (right - VIEW_W + MARGIN + 2) / cam.scale)}px\`;
-      toast.style.bottom = \`\${Math.max(20, (windowBottom - VIEW_H + MARGIN + 2) / cam.scale + riseOffset)}px\`;
-      toast.style.transform = \`translateY(\${riseOffset}px)\`;
-    }
-    renderModal(t);
-
-    const squareCorners = seg(cam.scale, 1.04, ${ZOOM_COVER_THRESHOLD}, smoothstep);
-    document.getElementById("demo-window").style.borderRadius = \`\${16 * (1 - squareCorners)}px\`;
-    camera.style.transform =
-      \`translate(\${cam.tx}px, \${cam.ty}px) scale(\${cam.scale})\`;
-
-    const cur = cursorState(t);
-    const cursor = document.getElementById("demo-cursor");
-    const spec = CURSORS[cur.kind];
-    const [hx, hy] = spec.hotspot;
-    if (cur.kind !== lastCursorKind) {
-      cursor.innerHTML = spec.svg;
-      cursor.style.transformOrigin = \`\${hx}px \${hy}px\`;
-      lastCursorKind = cur.kind;
-    }
-    cursor.style.transform = \`translate(\${cur.x * cam.scale + cam.tx - hx}px, \${cur.y * cam.scale + cam.ty - hy}px) scale(\${cur.scale})\`;
-
-    const rip = activeRipple(t);
-    const ripple = document.getElementById("demo-ripple");
-    ripple.style.display = rip ? "block" : "none";
-    if (rip) {
-      ripple.style.left = \`\${rip.x * cam.scale + cam.tx}px\`;
-      ripple.style.top = \`\${rip.y * cam.scale + cam.ty}px\`;
-      ripple.style.transform = \`scale(\${rip.scale})\`;
-      ripple.style.opacity = rip.opacity;
-    }
-
-    return cam;
-  };
-
-  const stageBounds = { left: 0, top: 0, right: VIEW_W, bottom: VIEW_H };
-  const visible = el => el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
-  const edgeMargin = (outer, inner) => Math.min(
-    inner.left - outer.left, inner.top - outer.top, outer.right - inner.right, outer.bottom - inner.bottom
-  );
-
-  function partiallyClipped(rect) {
-    return Math.min(rect.right, VIEW_W) > Math.max(rect.left, 0) &&
-      Math.min(rect.bottom, VIEW_H) > Math.max(rect.top, 0) &&
-      edgeMargin(stageBounds, rect) < -0.01;
-  }
-
-  function anchorMargin(name, cam, win) {
-    const matches = [...win.querySelectorAll('[data-anchor="' + name + '"]')].filter(visible);
-    if (!matches.length) {
-      const a = ANCHORS[name];
-      const left = a.left * cam.scale + cam.tx;
-      const top = a.top * cam.scale + cam.ty;
-      return edgeMargin(stageBounds, {
-        left, top, right: left + a.width * cam.scale, bottom: top + a.height * cam.scale
-      }) - MARGIN;
-    }
-
-    return Math.min(...matches.map(el => {
-      const r = el.getBoundingClientRect();
-      const margins = [edgeMargin(stageBounds, r) - MARGIN];
-      for (const selector of [".board", ".demo-view-layer"]) {
-        const viewport = el.closest(selector);
-        if (viewport) margins.push(edgeMargin(viewport.getBoundingClientRect(), r));
-      }
-      return Math.min(...margins);
-    }));
-  }
-
-  function inTransitionWindow(t) {
-    return t >= AT.dissolve - SWITCH_LEAD_SEC ||
-      SCENES.some(([start], i) => i > 0 && t >= start - SWITCH_LEAD_SEC && t < start + VIEW_TRANSITION_SEC);
-  }
-
-  window.__auditFrame = function (t) {
-    const cam = window.__setDemoTime(t);
-    const time = sceneTime(t);
-    const windowEl = document.getElementById("demo-window");
-    const win = windowEl.getBoundingClientRect();
-    const focus = cam.focus === "overview" ? win : focusRect(cam.focus, windowEl);
-    const toast = document.getElementById("demo-toast");
-    const sidebar = windowEl.querySelector(".cover").getBoundingClientRect();
-    const sidebarMargin = Math.max(sidebar.left + 12 * cam.scale, cam.scale - sidebar.right);
-    const toastMargin = visible(toast) ? edgeMargin(stageBounds, toast.getBoundingClientRect()) : null;
-    const textElements = windowEl.querySelectorAll(
-      "h1, h2, .view-title, .card-title, .view-sub, .card-note, .prep-sub, .eyebrow, " + BRAND_TEXT +
-      ", .storage-chip, .filter-chip, button, kbd, .kpi :is(p, strong, span), .strip-figure, .strip-rate, .ring-label > *, .demo-toast, " +
-      ".demo-board-view .app-card :is(.app-company, .app-role, .app-meta span, .chip, .demo-history-stamp)"
-    );
-    const slicedText = [...textElements]
-      .filter(el => visible(el) && partiallyClipped(el.getBoundingClientRect()))
-      .map(el => el.textContent.trim().replace(/\s+/g, " "));
-
-    const upcoming = new Set(cursorStops
-      .filter(([arrival, departure, pos]) => pos.anchor && departure >= time && arrival <= time + 0.5)
-      .map(([, , pos]) => pos.anchor));
-    const margins = [...upcoming].map(name => [name, anchorMargin(name, cam, windowEl)]);
-    const clippedAnchors = margins.filter(([, margin]) => margin < 0).map(([name]) => name);
-    const cursorMargin = margins.length ? Math.min(...margins.map(([, margin]) => margin)) : null;
-
-    let boardMargin = null;
-    if (time >= BOARD_APPROACH && time < AT.grabStripe) {
-      const board = windowEl.querySelector(".board");
-      const viewport = board?.getBoundingClientRect();
-      const applied = board?.querySelector(".column.st-APPLIED");
-      const card = applied?.querySelector('[data-anchor="card-stripe-applied"]');
-      if (!applied || !card) clippedAnchors.push("card-stripe-applied");
-      else boardMargin = Math.min(
-        edgeMargin(viewport, applied.getBoundingClientRect()),
-        edgeMargin(viewport, card.getBoundingClientRect())
-      );
-    }
-
-    const visibleWidth = Math.max(0, Math.min(win.right, VIEW_W) - Math.max(win.left, 0));
-    const visibleHeight = Math.max(0, Math.min(win.bottom, VIEW_H) - Math.max(win.top, 0));
-    const visibleArea = visibleWidth * visibleHeight;
-    return {
-      scale: cam.scale,
-      tx: cam.tx,
-      ty: cam.ty,
-      focus: cam.focus,
-      viewTransition: inTransitionWindow(t),
-      focusMargin: focus ? edgeMargin(stageBounds, focus) : null,
-      windowVisibleRatio: visibleArea / (win.width * win.height),
-      emptyRatio: 1 - visibleArea / (VIEW_W * VIEW_H),
-      sidebarMargin,
-      toastMargin,
-      cursorMargin,
-      boardMargin,
-      slicedText,
-      clippedAnchors
-    };
-  };
-
-  measureAnchors();
-  cameraPoses = cameraKeyPoses();
-  window.__cameraKeys = cameraPoses.map(({ time, scale, focus, fit }) => ({ time, scale, focus, fit }));
-  cursorStops = buildCursorTimeline();
-  window.__setDemoTime(0);
-})();
+const timeline = (${createTimeline.toString()})(${JSON.stringify(CHAPTERS)}, ${LOOP_REST_START});
+(${installScene.toString()})(timeline, ${JSON.stringify(icons)}, ${JSON.stringify(logo)});
 </script>
 </body>
 </html>`;
+}
+
+function installScene(timeline, icons, logo) {
+  const { actions, at, clicks, notebook, openings, out, progress, readiness, spring, stages, stripe, term } = timeline;
+  const root = document.querySelector("main");
+  const quickUrl = "https://boards.greenhouse.io/stripe/jobs/98765";
+  const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
+  const brand = (text = "") => `<span class="logo">${logo}${text}</span>`;
+  const title = (lead, accent) => `<h1 class="shot-title">${lead ? lead + " " : ""}<em>${accent}</em></h1>`;
+  const chip = (label, className = "") => `<span class="chip ${className}">${label}</span>`;
+  const stageStyle = ({ color, wash, ink }) => `--stage-color:${color};--stage-wash:${wash};--stage-ink:${ink}`;
+  const hitpoint = '<i class="hitpoint" aria-hidden="true"></i>';
+  const pressed = (t, when) => t >= when && t < when + 0.08 ? "pressed" : "";
+  const button = (label, target = "", className = "") => `<button type="button" class="button ${className}" ${target ? `data-anchor="${target}"` : ""}>${label}${target ? hitpoint : ""}</button>`;
+  const fadeUp = (p, distance = 18) => `opacity:${Math.max(0, Math.min(p, 1))};transform:translateY(${(1 - p) * distance}px)`;
+
+  function rig(name, t, { x, y, w, rx = 0, ry = 0, scale = 1, sway = 1, age, alpha = 1, lift = 0 }, html) {
+    const dx = Math.sin(t * 1.35 + x / 370) * 6 * sway;
+    const dy = Math.sin(t * 1.7 + y / 270) * 4 * sway;
+    const push = 1 + Math.sin(t * 1.1) * 0.014 * sway;
+    const drift = `translate(${dx}px,${dy}px) rotateX(${rx + dy * .22}deg) rotateY(${ry + dx * .2}deg) scale(${scale * push})`;
+    const p = age === undefined ? 1 : spring(age);
+    const mount = p === 1 ? "" : ` style="transform:translateY(${(1 - p) * 22}px) scale(${.9 + .1 * p});opacity:${progress(age, 0, .19, out)}"`;
+    return `<div class="space ${name}" style="left:${x}px;top:${y}px;width:${w}px${lift ? `;--lift:${lift}` : ""}" data-drift="${name}">
+      <div class="tilt" style="transform:${drift}"><div class="mount"${mount}><div class="surface"${alpha === 1 ? "" : ` style="opacity:${alpha}"`}>${html}</div></div></div>
+    </div>`;
+  }
+
+  function check(p, ring = false) {
+    return `<svg class="check-svg" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      ${ring ? `<circle cx="20" cy="20" r="17" opacity=".18"/><circle cx="20" cy="20" r="17" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${1 - p}" transform="rotate(-90 20 20)"/>` : ""}
+      <path d="m12 20 5.5 5.5L28 14.5" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${1 - p}"/>
+    </svg>`;
+  }
+
+  function hook(t) {
+    const word = "internships";
+    const suffix = "in a spreadsheet?";
+    const count = Math.floor(progress(t, 0.025, 1.43, x => x) * (word.length + suffix.length));
+    const tail = count < word.length ? "" : suffix.slice(0, count - word.length);
+    const caret = `<i class="typing-caret" style="opacity:${Math.floor(t / .26) % 2 ? 0 : 1}" aria-hidden="true"></i>`;
+    const ghosts = [
+      [{ x: 96, y: 116, w: 302, rx: 9, ry: -12, sway: 1.45 }, 3.4, .75, '<h2>Internship tracker</h2><div class="ghost-grid"></div>'],
+      [{ x: 920, y: 98, w: 242, rx: -6, ry: 12, sway: .68 }, 5.7, .59, '<h2>Software Intern</h2><p>Application</p><div class="ghost-lines"><i></i><i></i><i></i></div>'],
+      [{ x: 842, y: 492, w: 296, rx: 8, ry: -10, sway: 1.22 }, 3, .69, '<h2>Product Engineering</h2><p>Interview</p><div class="ghost-lines"><i></i><i></i><i></i></div>'],
+      [{ x: 154, y: 493, w: 196, rx: -10, ry: 10, sway: .82 }, 6.8, .45, '<h2>Applications</h2><div class="ghost-grid"></div>']
+    ];
+    return ghosts.map(([pose, blur, alpha, content], i) => `<div class="ghost-layer" style="filter:blur(${blur}px)" aria-hidden="true">${rig(`ghost ghost-${i}`, t, { ...pose, alpha }, content)}</div>`).join("") +
+      `<h1 class="hook-title"><span>Still tracking <em>${word.slice(0, count)}</em>${count < word.length ? caret : ""}</span>
+        <span>${tail}${count >= word.length ? caret : ""}</span></h1>`;
+  }
+
+  function quick(t, age) {
+    const head = title("1-Click Job", "Clipper");
+    const open = actions.newApplication + .09;
+    if (t < open) {
+      return head + rig("new-application", age, { x: 404, y: 295, w: 472, rx: 8, ry: -10, age },
+        button(icon("plus") + "New application", "new", "primary " + pressed(t, actions.newApplication)));
+    }
+    const typed = quickUrl.slice(0, Math.floor(quickUrl.length * progress(t, actions.paste, actions.paste + .26, x => x)));
+    const bar = `<header class="quick-head"><span class="app-icon">${icon("link")}</span><h2>Quick Fill</h2></header>
+      <div class="link-bar">${icon("link")}<span>${typed || "Paste a job link"}${t >= actions.paste && t < actions.scan ? '<i class="typing-caret"></i>' : ""}</span></div>`;
+    const paste = `<p class="flank left" style="${fadeUp(progress(t, open + .09, open + .48, out))}">Paste <em>any link.</em></p>`;
+    const barExit = progress(t, actions.scan, actions.scan + .18);
+    const barCard = barExit < 1 ? rig("quick quick-bar", age, { x: 374, y: 229, w: 532, rx: 7, ry: -9, age: t - open, alpha: 1 - barExit }, bar) : "";
+    if (t < actions.scan) return head + barCard + paste;
+    const scan = progress(t, actions.scan, 4.26, out);
+    const beam = progress(t, actions.scan, 4.18, x => x);
+    const locked = progress(t, 4.12, 4.42);
+    const fields = [
+      [stripe.company, "notebook", 3.61], [stripe.role, "file", 3.72], [stripe.location, "pin", 3.83],
+      ...stripe.skills.map((skill, i) => [skill, "", 3.93 + i * .05])
+    ];
+    const badges = fields.map(([label, glyph, from]) =>
+      `<span style="${fadeUp(spring(t - from), 12)}">${chip((glyph ? icon(glyph) : "") + label, glyph ? "" : "skill")}</span>`
+    ).join("");
+    const saved = t >= actions.saveStripe;
+    const filled = `<p class="flank right" style="${fadeUp(progress(t, 3.71, 4.16, out))}">Every field<br><em>filled.</em></p>`;
+    const card = bar + `<div class="quick-result">
+        <p>Instant link parsing</p><div class="quick-fields">${badges}</div>
+        <svg class="reticle" viewBox="0 0 480 172" preserveAspectRatio="none" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="opacity:${scan * (1 - .8 * locked)}" aria-hidden="true">
+          <path d="M2 25V2h25 M453 2h25v23 M478 147v23h-25 M27 170H2v-23"/>
+        </svg>
+        <i class="scan-beam" style="top:${8 + 83 * beam}%;opacity:${Math.sin(Math.PI * beam) * .64}" aria-hidden="true"></i>
+      </div>
+      <footer class="quick-foot"><span>${notebook(t).active.length} active applications</span>
+        ${t >= 4.17 ? button(saved ? icon("check") + "Saved" : "Save to notebook", "save-stripe", (saved ? "done " : "primary ") + pressed(t, actions.saveStripe)) : ""}
+      </footer>`;
+    return head + barCard + rig("quick", age, { x: 374, y: 196, w: 532, rx: 7, ry: -9, age: t - actions.scan }, card) + paste + filled;
+  }
+
+  function appWindow(t, age, tab, content, flip = 1) {
+    const nav = [["Today", "today"], ["Board", "board"], ["Applications", "notebook"], ["Insights", "insights"]];
+    return rig("window", age, { x: 180, y: 166, w: 920, rx: 5, ry: -7 * flip }, `
+      <div class="chrome"><span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-name">My Internship Notebook</span></div>
+      <div class="window-body">
+        <aside class="sidebar">${brand("My Internship<br>Notebook")}
+          <nav>${nav.map(([label, glyph]) => `<span class="tab" ${label === tab ? 'aria-current="page"' : ""}>${icon(glyph)}${label}</span>`).join("")}</nav>
+          <p class="sidebar-count">${notebook(t).active.length} active applications</p>
+        </aside>
+        <section class="window-content">${content}</section>
+      </div>`);
+  }
+
+  function board(t, age) {
+    const { active, columns, python } = notebook(t);
+    const cards = columns.map((apps, i) => `<section class="column" style="${stageStyle(stages[i])}">
+      <h3><i></i>${stages[i].label}<b>${apps.length}</b></h3>
+      ${apps.map(app => `<div class="mini-card"><b>${app.company}</b><span>${app.role}</span></div>`).join("")}</section>`
+    ).join("");
+    const content = `<header class="pane-header"><h2>Board</h2>${button(icon("plus") + "New application", "", "primary")}</header>
+      <div class="filters">${button(`All (${active.length})`, "", "active")}${button(`Python (${python.length})`)}</div>
+      <div class="column-grid">${cards}</div>`;
+    return title("Pipeline", "Board") + appWindow(t, age, "Board", content);
+  }
+
+  function drag(t, age) {
+    const travel = progress(t, actions.grab, actions.drop);
+    const lift = Math.sin(Math.PI * travel);
+    const stage = progress(t, actions.drop, actions.drop + .23, out);
+    const stamp = spring(t - actions.drop - .09);
+    const { active, columns, python } = notebook(t);
+    const filtered = t >= actions.python;
+    const visible = filtered ? columns.map(apps => apps.filter(app => python.includes(app))) : columns;
+    const lanes = [1, 2].map(i => `<div class="lane" style="${stageStyle(stages[i])}"><b>${stages[i].label} · ${visible[i].length}</b></div>`).join("");
+    const card = `<div data-anchor="stripe">${hitpoint}
+      <span class="status">${[1, 2].map(i => `<span class="chip" style="${stageStyle(stages[i])};opacity:${i === 1 ? 1 - stage : stage}">${stages[i].label}</span>`).join("")}</span>
+      <span class="app-icon" style="background:#eeeafd;color:#5546ab">S</span><h2>${stripe.company}</h2><p>${stripe.role}</p>
+      <div class="tags">${stripe.skills.map(skill => chip(skill)).join("")}</div>
+      <div class="stamp" style="${fadeUp(stamp, 14)}">${check(progress(t, actions.drop + .1, actions.drop + .58, out), true)}Interview · Nov 17</div>
+    </div>`;
+    return title("Pipeline", "Board") + `<div class="lanes">${lanes}</div>` +
+      rig("drag-card", age, { x: 284 + 402 * travel, y: 264 - 48 * lift, w: 310, rx: 6 + 5 * lift, ry: -7 + 14 * travel, scale: 1 + .064 * lift, sway: .42, lift }, card) +
+      `<div class="python-filter">${chip(`All (${active.length})`)}${button(`Python (${python.length})`, "python", (filtered ? "active " : "") + pressed(t, actions.python))}
+        ${filtered ? `<div class="python-results" style="${fadeUp(spring(t - actions.python), 11)}">
+          ${python.map(app => chip(app.company + " · " + stages[app.stage].label)).join("")}
+        </div>` : ""}</div>`;
+  }
+
+  function prep(t, age) {
+    const cues = [["STAR structure", "notebook"], ["Speaking pace · 138 wpm", "clock"], ["Technical depth", "board"]];
+    return title("Interview Prep", "& Mock") + cues.map(([label, glyph], i) => {
+      const tick = progress(age, .58 + i * .49, .94 + i * .49, out);
+      const content = `<span class="app-icon">${icon(glyph)}</span><h2>${label}</h2>
+        <span class="badge" style="opacity:${.2 + .8 * tick}">${check(tick)}</span>`;
+      return rig(`prep-pill prep-${i}`, age,
+        { x: 353 + i * 18, y: 207 + i * 111, w: 538, rx: 5 - i * 4, ry: -9 + i * 6, sway: .65, age: age + .06 - i * .24 },
+        content);
+    }).join("");
+  }
+
+  function score(t, age) {
+    const p = progress(age, .15, 1.5, out);
+    const tick = progress(age, 1.1, 1.65, out);
+    return title("Interview", "readiness") + `
+      <div class="ring-orbit" style="position:absolute;left:472px;top:194px;${fadeUp(spring(age), 16)}">
+        <svg viewBox="0 0 306 306" fill="none" stroke-width="9" stroke-linecap="round" aria-hidden="true">
+          <circle cx="153" cy="153" r="140" stroke="#254c40"/><circle cx="153" cy="153" r="140" stroke="#1baf7a" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${1 - readiness / 100 * p}" transform="rotate(-90 153 153)"/>
+        </svg>
+        <div class="score"><b>${Math.round(readiness * p)}</b><span>/ 100</span><p>Readiness</p>${check(tick)}</div>
+      </div>`;
+  }
+
+  function feed(t, age) {
+    const filtered = t >= actions.term;
+    const rows = filtered ? openings.filter(app => app.term === term) : openings;
+    const content = `<header class="pane-header"><h2>Today's openings</h2></header>
+      <div class="filters">${button("All terms", "", filtered ? "" : "active")}${button(icon("calendar") + term, "term", (filtered ? "active " : "") + pressed(t, actions.term))}</div>
+      <div class="feed">${rows.map(app => `<div class="feed-row"><b>${app.company}</b><span>${app.role}</span><span>${app.location}</span>${chip(app.term)}${button("Save")}</div>`).join("")}</div>`;
+    return title("Internship", "Openings") + appWindow(t, age, "Today", content, -1);
+  }
+
+  function opening(t, age) {
+    const app = openings[0];
+    const saved = t >= actions.saveOpening;
+    const pop = spring(t - actions.saveOpening);
+    const toast = saved ? `<div class="toast" role="status" style="translate:-50% 0;${fadeUp(pop, 17)}">
+      <span class="badge">${check(progress(t, actions.saveOpening, actions.saveOpening + .36, out))}</span>${app.company} saved to notebook</div>` : "";
+    const card = `<div class="opening-top"><span class="app-icon">${icon("external")}</span><h2>${app.company}</h2>
+        ${button(saved ? icon("check") + "Saved" : "Save", "save-opening", (saved ? "done " : "primary ") + pressed(t, actions.saveOpening))}
+      </div><h3>${app.role}</h3>
+      <div class="opening-meta">${chip(icon("pin") + app.location)}${chip(icon("calendar") + app.term)}</div>`;
+    return title("Internship", "Openings") + rig("opening-card", age, { x: 338, y: 252, w: 604, rx: 7, ry: 10 }, card) +
+      `<p class="opening-count"><b>${notebook(t).active.length}</b> active applications</p>` + toast;
+  }
+
+  function radar(t, age) {
+    const menu = t >= actions.export + .09 && t < actions.download + .12;
+    const downloaded = t >= actions.download + .12;
+    const content = `<header class="radar-head"><span class="app-icon">${icon("calendar")}</span><h2>Deadline Radar</h2>
+        ${downloaded ? chip(icon("check") + "Downloaded") : button(icon("download") + "Export", "export", pressed(t, actions.export))}
+        ${menu ? `<div class="export-menu" style="${fadeUp(progress(t, actions.export + .09, actions.export + .27, out), -7)}">
+          ${button("Download calendar (.ics)", "download", pressed(t, actions.download))}
+        </div>` : ""}
+      </header>
+      <article class="radar-event"><div class="date">NOV<b>18</b></div><div><h3>Cedar Grove technical screen</h3>${chip("Upcoming interview · 10 am")}</div></article>
+      <article class="radar-event"><div class="date">NOV<b>20</b></div><div><h3>Northwind application deadline</h3><p>Waterloo, ON · Backend Intern</p></div></article>`;
+    return title("Deadlines", "& Calendar") + rig("radar", age, { x: 339, y: 219, w: 602, rx: 8, ry: -11 }, content);
+  }
+
+  function confirmed(t, age) {
+    const p = progress(age, .09, .78, out);
+    return title("Deadlines", "& Calendar") + rig("confirm-card", age, { x: 341, y: 316, w: 598, rx: 7, ry: -9, age },
+      `${check(p, true)}<h2>Calendar file with 24 h and 2 h reminders</h2>`);
+  }
+
+  function insights(t, age) {
+    const { active, funnel, skills } = notebook(t);
+    const percent = (count, total) => Math.round(count / total * 100);
+    const row = (label, amount, max, value, from, color) => `<div class="chart-row"><span>${label}</span>
+      <div class="chart-track"><i style="--bar:${color};transform:scaleX(${amount / max * progress(age, from, from + .67, out)})"></i></div>
+      <b>${value}</b></div>`;
+    const charts = `<div class="insight-grid"><section class="chart"><h3>Conversion funnel</h3>
+      ${funnel.map((n, i) => row(stages[i].label, n, active.length, `${n} <small>(${percent(n, active.length)}%)</small>`, .19 + i * .12, stages[i].color)).join("")}
+      </section><section class="chart skills"><h3>Top interview skills</h3>
+      ${skills.map(([skill, n], i) => row(skill, n, skills[0][1], n, .41 + i * .12, "#2563eb")).join("")}</section></div>`;
+    const metrics = [["Active applications", active.length], ["Response rate", percent(funnel[2], funnel[1]) + "%"], ["Mock readiness", readiness + " / 100"]];
+    const content = `<header class="pane-header"><h2>Search insights</h2></header>
+      <div class="kpis">${metrics.map(([label, value]) => `<div class="kpi"><p>${label}</p><b>${value}</b></div>`).join("")}</div>` + charts;
+    return title("", "Insights") + appWindow(t, age, "Insights", content, -1);
+  }
+
+  function outro(t, age) {
+    const shift = progress(age, .48, 1.04, out);
+    const enter = progress(age, 0, .35, out);
+    return `<div class="outro"><h1 style="opacity:${enter};transform:translateY(${20 * (1 - enter) - 105 * shift}px) scale(${1 - .39 * shift})">Stay in <em>control.</em></h1>
+      <div class="lockup" style="${fadeUp(spring(age - .62), 28)}">${brand()}<h2>My Internship Notebook</h2>
+        <span class="domain" style="${fadeUp(spring(age - .88), 20)}">internshipnotebook.app</span>
+      </div></div>`;
+  }
+
+  const render = { hook, quick, board, drag, prep, readiness: score, openings: feed, opening, calendar: radar, confirmed, insights, outro };
+  const cursors = {
+    pointer: { x: 4, y: 3, path: "M4 3 29 20 17.8 21.8l5.3 11-4.6 2.2-5.3-11L4 32Z" },
+    hand: { x: 14, y: 17, path: "M14 17V8a2.2 2.2 0 0 1 4.4 0v8-4a2.1 2.1 0 0 1 4.2 0v5-3a2.1 2.1 0 0 1 4.2 0v5-2a2.1 2.1 0 0 1 4.2 0v6c0 5.4-3.6 9-8.8 9h-2.7c-3.2 0-5.7-1.9-7.7-4.6l-4-5.6a2.1 2.1 0 0 1 3.2-2.7l3 3.6Z" }
+  };
+
+  function rectMargin(outer, inner) {
+    return Math.min(inner.left - outer.left, inner.top - outer.top, outer.right - inner.right, outer.bottom - inner.bottom);
+  }
+
+  const visible = el => el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  function fullyVisible(el) {
+    if (!el || !visible(el)) return false;
+    for (let node = el; node !== root; node = node.parentElement) {
+      if (Number(getComputedStyle(node).opacity) < .99) return false;
+    }
+    return true;
+  }
+  const anchor = (shot, target) => root.querySelector(`[data-shot="${shot}"] [data-anchor="${target}"]`);
+  function point(el) {
+    const { left, top } = el.querySelector(".hitpoint").getBoundingClientRect();
+    return { x: left, y: top };
+  }
+
+  function paintCursor(t, shot) {
+    const click = clicks.find(click => click.shot === shot && t >= click.at - .37 && t < click.at + .3);
+    const dragging = shot === "drag" && t >= actions.grab && t < actions.drop + .3;
+    if (!click && !dragging) return null;
+    const target = dragging ? "stripe" : click.target;
+    const el = anchor(shot, target);
+    if (!el) return null;
+    const when = dragging ? actions.grab : click.at;
+    const p = progress(t, when - .37, when);
+    const since = t - when;
+    const { x, y } = point(el);
+    const xOffset = -76 * (1 - p);
+    const yOffset = 56 * (1 - p) - Math.sin(Math.PI * p) * 14;
+    const hold = dragging && t < actions.drop;
+    const released = dragging && !hold;
+    const end = released ? actions.drop : when;
+    const exit = target === "new" ? progress(t, end + .04, end + .09)
+      : target === "download" ? progress(t, end + .06, end + .12)
+      : progress(t, end + .14, end + .3);
+    const alpha = progress(t, when - .37, when - .22) * (hold ? 1 : 1 - exit);
+    const press = since < 0 ? 0 : Math.sin(Math.PI * progress(t, when, when + .13, x => x));
+    const size = 1 - .14 * press;
+    const cursor = target === "stripe" ? cursors.hand : cursors.pointer;
+    const ripple = since >= 0 && since < .24 ? `<div class="ripple" style="transform:translate(${x - 19}px,${y - 19}px) scale(${.27 + progress(t, when, when + .24, out)});opacity:${alpha * (1 - progress(t, when, when + .24))}"></div>` : "";
+    root.insertAdjacentHTML("beforeend", ripple + `
+      <svg class="cursor" width="38" height="38" viewBox="0 0 38 38" style="transform-origin:${cursor.x}px ${cursor.y}px;transform:translate(${x + xOffset - cursor.x}px,${y + yOffset - cursor.y}px) scale(${size});opacity:${alpha}" aria-hidden="true">
+        <path d="${cursor.path}" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+      </svg>`);
+    return { target, hotspot: [cursor.x, cursor.y] };
+  }
+
+  const mode = shot => shot.dark ? "dark" : "light";
+  function renderFrame(time) {
+    const frame = at(time);
+    const layerHtml = ({ shot, t, shift, opacity }) => {
+      const effect = !frame.whipping ? "" : `transform:translateX(${shift}px);filter:blur(${Math.min(9, Math.abs(shift) / 9)}px);`;
+      return `<section class="shot" data-shot="${shot.id}" style="${effect}${opacity === 1 ? "" : `opacity:${opacity}`}">${render[shot.id](t, t - shot.start)}</section>`;
+    };
+    const dissolve = frame.layers.find(layer => layer.canvas);
+    root.innerHTML = `<div class="canvas ${mode(frame.shot)}">${frame.layers.filter(layer => !layer.canvas).map(layerHtml).join("")}</div>` +
+      (dissolve ? `<div class="canvas ${mode(dissolve.shot)}" style="opacity:${dissolve.opacity}">${layerHtml({ ...dissolve, opacity: 1 })}</div>` : "");
+    const cursor = paintCursor(frame.t, frame.shot.id);
+    return { frame, cursor };
+  }
+
+  window.__setDemoTime = renderFrame;
+  window.__auditFrame = time => {
+    const { frame, cursor } = renderFrame(time);
+    const bounds = root.getBoundingClientRect();
+    const slices = [];
+    if (!frame.whipping) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const range = document.createRange();
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.textContent.trim() || !visible(node.parentElement)) continue;
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects()) {
+          const margin = rectMargin(bounds, rect);
+          if (margin < -.01) slices.push({ text: node.textContent.trim(), margin });
+        }
+      }
+    }
+    const targets = clicks.filter(click => time >= click.at - .500001 && time <= click.at + .000001).map(click => {
+      const el = anchor(click.shot, click.target);
+      const margin = fullyVisible(el) ? rectMargin(bounds, el.getBoundingClientRect()) : -1000;
+      let error = 0;
+      if (Math.abs(time - click.at) <= .000001) {
+        const pointer = root.querySelector(".cursor");
+        if (cursor?.target === click.target && pointer && el) {
+          const tip = new DOMPoint(...cursor.hotspot).matrixTransform(pointer.getScreenCTM());
+          const hit = point(el);
+          error = Math.hypot(tip.x - hit.x, tip.y - hit.y);
+        } else {
+          error = 1000;
+        }
+      }
+      return { target: click.target, margin, error };
+    });
+    const toast = root.querySelector(".toast");
+    const drift = {};
+    for (const el of root.querySelectorAll(`[data-shot="${frame.shot.id}"] [data-drift]`)) {
+      const rect = el.querySelector(".tilt")?.getBoundingClientRect() ?? el.getBoundingClientRect();
+      drift[el.dataset.drift] = [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2, rect.width, rect.height];
+    }
+    const canvas = root.firstElementChild;
+    return {
+      shot: frame.shot.id, chapter: frame.shot.chapter, whipping: frame.whipping,
+      canvas: canvas.classList.contains("dark") ? "dark" : "light", background: getComputedStyle(canvas).backgroundImage,
+      slicedText: slices, targets, toastMargin: toast && visible(toast) ? rectMargin(bounds, toast.getBoundingClientRect()) : null,
+      drift
+    };
+  };
+  renderFrame(0);
 }
 
 function runEncoder(bin, args, label) {
@@ -1615,6 +795,7 @@ function encodeMp4WithSwift(framesPath, offsets, outPath) {
   const swiftSource = `
 import AVFoundation
 import CoreGraphics
+import CoreMedia
 import CoreVideo
 import Foundation
 import ImageIO
@@ -1627,6 +808,8 @@ let offsets = try JSONDecoder().decode([UInt64].self, from: offsetsData)
 let outURL = URL(fileURLWithPath: args[3])
 let bitrate = Int(args[4])!
 let fps: Int32 = ${FPS}
+let frameDuration = CMTime(value: 1, timescale: fps)
+let loopPTS = CMTime(value: ${LOOP_REST_START * FPS}, timescale: fps)
 let outWidth = ${OUT_WIDTH}
 let outHeight = ${OUT_HEIGHT}
 
@@ -1679,6 +862,19 @@ func pixelBuffer(from jpegData: Data, pool: CVPixelBufferPool) -> CVPixelBuffer?
   return pb
 }
 
+func appendLoopKeyframe(_ buffer: CVPixelBuffer, at pts: CMTime) -> Bool {
+  var description: CMVideoFormatDescription?
+  guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: buffer, formatDescriptionOut: &description) == 0,
+        let description else { return false }
+  var timing = CMSampleTimingInfo(duration: frameDuration, presentationTimeStamp: pts, decodeTimeStamp: .invalid)
+  var sample: CMSampleBuffer?
+  guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: buffer, formatDescription: description,
+                                               sampleTiming: &timing, sampleBufferOut: &sample) == 0,
+        let sample else { return false }
+  CMSetAttachment(sample, key: kCMSampleBufferAttachmentKey_ForceKeyFrame, value: kCFBooleanTrue, attachmentMode: kCMAttachmentMode_ShouldPropagate)
+  return input.append(sample)
+}
+
 let frameCount = offsets.count - 1
 guard frameCount > 0, offsets.first == 0, let pool = adaptor.pixelBufferPool else {
   fatalError("Invalid frame offsets or missing pixel buffer pool")
@@ -1696,7 +892,8 @@ for i in 0..<frameCount {
       Thread.sleep(forTimeInterval: 0.005)
     }
     let pts = CMTime(value: CMTimeValue(i), timescale: fps)
-    guard adaptor.append(buffer, withPresentationTime: pts) else {
+    let appended = pts == loopPTS ? appendLoopKeyframe(buffer, at: pts) : adaptor.append(buffer, withPresentationTime: pts)
+    guard appended else {
       fatalError("Cannot append frame \\(i): \\(String(describing: writer.error))")
     }
   }
@@ -1704,10 +901,26 @@ for i in 0..<frameCount {
 
 writer.endSession(atSourceTime: CMTime(value: CMTimeValue(frameCount), timescale: fps))
 input.markAsFinished()
-let finished = DispatchSemaphore(value: 0)
-writer.finishWriting { finished.signal() }
-finished.wait()
+await writer.finishWriting()
 guard writer.status == .completed else { fatalError("MP4 write failed: \\(String(describing: writer.error))") }
+
+func hasLoopKeyframe() async throws -> Bool {
+  let asset = AVURLAsset(url: outURL)
+  guard let track = try await asset.loadTracks(withMediaType: .video).first else { return false }
+  let reader = try AVAssetReader(asset: asset)
+  let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+  output.alwaysCopiesSampleData = false
+  reader.add(output)
+  reader.timeRange = CMTimeRange(start: loopPTS, duration: frameDuration)
+  guard reader.startReading() else { return false }
+  while let sample = output.copyNextSampleBuffer() {
+    guard CMSampleBufferGetPresentationTimeStamp(sample) == loopPTS else { continue }
+    let flags = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
+    return flags?.first?[kCMSampleAttachmentKey_NotSync as String] as? Bool != true
+  }
+  return false
+}
+guard try await hasLoopKeyframe() else { fatalError("MP4 is missing the loop keyframe at ${LOOP_REST_START}s") }
 `;
   fs.writeFileSync(swiftScript, swiftSource);
   fs.writeFileSync(offsetsPath, JSON.stringify(offsets));
@@ -1757,75 +970,80 @@ async function openScene(browser, sceneHtml, deviceScaleFactor) {
   return page;
 }
 
-const MOTION_LIMITS = { zoomSpeed: 0.6, zoomAcceleration: 3, panSpeed: 700, panAcceleration: 3000 };
+const DRIFT_LIMITS = { speed: 80, acceleration: 600 };
+const DRAG_LIMITS = { speed: 880, acceleration: 5700 };
 
-function cameraMotion(current, previous, prior) {
-  if (!previous) return null;
-  const dx = current.tx - previous.tx;
-  const dy = current.ty - previous.ty;
-  const ds = current.scale - previous.scale;
-  return {
-    zoomSpeed: Math.abs(ds) * FPS,
-    zoomAcceleration: prior ? Math.abs(ds - (previous.scale - prior.scale)) * FPS ** 2 : 0,
-    panSpeed: Math.hypot(dx, dy) * FPS,
-    panAcceleration: prior ? Math.hypot(dx - (previous.tx - prior.tx), dy - (previous.ty - prior.ty)) * FPS ** 2 : 0
-  };
+function measureMotion(frame, previous, prior) {
+  if (frame.whipping || previous?.whipping || frame.shot !== previous?.shot) return [];
+  return Object.entries(frame.drift).flatMap(([name, position]) => {
+    const before = previous.drift[name];
+    if (!before) return [];
+    const delta = position.map((value, i) => value - before[i]);
+    const earlier = prior?.shot === frame.shot && !prior.whipping ? prior.drift[name] : null;
+    const speed = Math.hypot(...delta) * FPS;
+    const acceleration = earlier ? Math.hypot(...delta.map((value, i) => value - (before[i] - earlier[i]))) * FPS ** 2 : 0;
+    const limit = name === "drag-card" ? DRAG_LIMITS : DRIFT_LIMITS;
+    return [{ name, speed, acceleration, margin: 1 - Math.max(speed / limit.speed, acceleration / limit.acceleration) }];
+  });
 }
 
 async function frameReport(page, frame, previous, prior) {
   const t = frame / FPS;
   const result = await page.evaluate(time => window.__auditFrame(time), t);
-  return { frame, t, ...result, motion: cameraMotion(result, previous, prior) };
+  const chapter = Object.entries(CHAPTERS).findLast(([, start]) => t >= start);
+  const expected = chapter[1] % 10 === 0 ? "dark" : "light";
+  const color = expected === "dark" ? "rgb(9, 12, 18)" : "rgb(232, 236, 244)";
+  const checkCanvas = t < LOOP_REST_START;
+  const canvasMargin = checkCanvas ? Number(result.chapter === chapter[0] && result.canvas === expected && result.background.includes(color) &&
+    (t !== chapter[1] || !result.whipping)) - 1 : null;
+  return { frame, t, ...result, canvasMargin, motion: measureMotion(result, previous, prior), seam: null };
 }
 
 const FRAMING_RULES = {
-  focus: frame => (frame.focusMargin ?? -Infinity) - FOCUS_MARGIN,
-  zoomedBackdrop: frame => frame.scale > ZOOM_COVER_THRESHOLD ? -frame.emptyRatio : null,
-  overviewWindow: frame => frame.scale <= 1.11 ? frame.windowVisibleRatio - 1 + 1e-9 : null,
-  sidebar: frame => frame.sidebarMargin,
-  toast: frame => frame.toastMargin === null ? null : frame.toastMargin - FRAME_MARGIN,
-  slicedText: frame => -frame.slicedText.length,
-  cursor: frame => frame.clippedAnchors.length ? Math.min(frame.cursorMargin ?? 0, -0.01) : frame.cursorMargin,
-  boardViewport: frame => frame.boardMargin === null ? null : frame.boardMargin + 0.01,
-  viewTransition: frame => frame.viewTransition
-    ? Math.min(0.001 - Math.abs(frame.scale - 1), -(frame.motion?.zoomSpeed ?? 0), -(frame.motion?.panSpeed ?? 0))
-    : null,
-  motion: frame => frame.motion
-    ? Math.min(...Object.entries(MOTION_LIMITS).map(([name, limit]) => 1 - frame.motion[name] / limit))
-    : null
+  slicedText: report => report.whipping ? null : Math.min(0, ...report.slicedText.map(slice => slice.margin)),
+  cursor: report => report.targets.length ? Math.min(...report.targets.map(target => Math.min(target.margin, .01 - target.error))) : null,
+  toast: report => report.toastMargin === null ? null : report.toastMargin - 12,
+  motion: report => report.motion.length ? Math.min(...report.motion.map(item => item.margin)) : null,
+  loopSeam: report => report.seam,
+  chapterCanvas: report => report.canvasMargin
 };
 
-function failsFraming(frame) {
-  return Object.values(FRAMING_RULES).some(clearance => {
-    const value = clearance(frame);
-    return value !== null && value < 0;
-  });
+function failsFraming(report) {
+  return Object.values(FRAMING_RULES).some(clearance => clearance(report) < 0);
 }
 
 async function auditFrames(page) {
-  const cameraKeys = await page.evaluate(() => window.__cameraKeys);
   const frames = [];
-  for (let i = 0; i < TOTAL_FRAMES; i++) {
-    frames.push(await frameReport(page, i, frames.at(-1), frames.at(-2)));
+  let opening;
+  for (let frame = 0; frame < TOTAL_FRAMES; frame++) {
+    const report = await frameReport(page, frame, frames.at(-1), frames.at(-2));
+    if (frame === 0) opening = await page.screenshot({ type: "png" });
+    if (frame >= LOOP_REST_START * FPS) {
+      const held = await page.screenshot({ type: "png" });
+      report.seam = held.equals(opening) ? 0 : -1;
+    }
+    frames.push(report);
   }
   const failures = frames.filter(failsFraming);
   const worst = Object.fromEntries(Object.entries(FRAMING_RULES).map(([name, clearance]) => [
     name,
-    frames.filter(frame => clearance(frame) !== null)
-      .sort((a, b) => clearance(a) - clearance(b)).slice(0, 5)
+    frames.map(report => ({ report, margin: clearance(report) })).filter(item => item.margin !== null)
+      .sort((a, b) => a.margin - b.margin).slice(0, 5)
+      .map(({ report, margin }) => {
+        const { frame, t, shot, canvas, slicedText, targets, toastMargin, motion, seam } = report;
+        const details = { slicedText, cursor: targets, toast: toastMargin, motion, loopSeam: seam, chapterCanvas: canvas };
+        return { frame, t, shot, margin, value: details[name] };
+      })
   ]));
-  const worstMotion = Object.fromEntries(Object.entries(MOTION_LIMITS).map(([name, limit]) => {
-    const worstFrames = frames.slice(1).sort((a, b) => b.motion[name] - a.motion[name]).slice(0, 5)
-      .map(({ frame, t, motion }) => ({ frame, t, value: motion[name] }));
-    return [name, { limit, peak: worstFrames[0].value, worstFrames }];
-  }));
-  console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, cameraKeys, worst, worstMotion }, null, 2));
+  console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, chapters: CHAPTERS,
+    motionLimits: { drift: DRIFT_LIMITS, drag: DRAG_LIMITS }, worst }, null, 2));
   if (failures.length) throw new Error(`Framing audit failed on ${failures.length} frames`);
 }
 
 async function captureFrames(page, framesPath) {
   const offsets = [0];
   const fd = fs.openSync(framesPath, "wx");
+  let opening;
   let previous;
   let prior;
   try {
@@ -1834,7 +1052,8 @@ async function captureFrames(page, framesPath) {
       if (failsFraming(report)) throw new Error(`Framing audit failed: ${JSON.stringify(report)}`);
       prior = previous;
       previous = report;
-      const jpeg = await page.screenshot({ type: "jpeg", quality: 90 });
+      const jpeg = i >= LOOP_REST_START * FPS ? opening : await page.screenshot({ type: "jpeg", quality: 90 });
+      if (i === 0) opening = jpeg;
       for (let written = 0; written < jpeg.length;) {
         const size = fs.writeSync(fd, jpeg, written, jpeg.length - written);
         if (!size) throw new Error(`Could not write frame ${i}`);
@@ -1866,7 +1085,7 @@ async function capturePoster(browser, sceneHtml, posterPath) {
 
 async function main() {
   const audit = process.argv.includes("--audit");
-  const sceneHtml = buildSceneHtml(fs.readFileSync(STYLES_PATH, "utf8"));
+  const sceneHtml = buildSceneHtml(ICONS, LOGO);
   const ffmpegBin = audit ? null : findFfmpeg();
   let browser = await chromium.launch({ headless: true });
   let tempDir;
