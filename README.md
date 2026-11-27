@@ -17,7 +17,7 @@
 
 <p>
   <a href="https://internshipnotebook.app/">
-    <img src="./docs/assets/hero-tour.gif" alt="My Internship Notebook interactive tour showing the workspace builder, 1-click job clipper, Kanban board, timed mock interview coach, insights, and daily openings" width="840" />
+    <img src="./docs/assets/hero-tour.gif" alt="My Internship Notebook 30-second film: 1-click job clipper, pipeline board, interview prep and mock coach, internship openings, deadlines and calendar, and insights" width="720" />
   </a>
 </p>
 
