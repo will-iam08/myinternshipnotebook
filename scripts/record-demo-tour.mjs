@@ -1115,44 +1115,24 @@ html, body {
     export: CALENDAR_HEADER + ", .demo-export, .demo-export-menu",
     funnel: BRAND_TEXT + ", .demo-insights-view :is(.view-head, .kpis, .insight-grid)"
   };
-  const TOP_FRAMED_FOCUSES = new Set([
-    "quick-fill", "board", "openings", "radar", "radar-export", "export", "funnel"
-  ]);
-
-  // [Time, target scale, focus, vertical aim offset, horizontal pan fraction].
+  // [Time, target scale, focus, horizontal pan fraction].
   const CAMERA_KEYS = [
     [0, 1, "overview"],
-    [AT.newPage, 1, "overview"],
-    [1.13, 1.35, "quick-fill"],
-    [3.66, 1.35, "quick-fill"],
-    [4.36, 1, "overview"],
-    [BOARD_APPROACH, 1, "overview"],
-    [5.85, 1.35, "board"],
-    [AT.dropStripe, 1.35, "board"],
-    [PYTHON_APPROACH, 1.30, "board", 0, 0.045],
-    [8.66, 1.30, "board", 0, 0.045],
-    [8.76, 1.30, "board"],
-    [9.42, 1.30, "board"],
-    [10.05, 1, "overview"],
-    [11.10, 1, "overview"],
-    [11.9, 1.40, "prep"],
-    [PREP_HOLD_END, 1.40, "prep"],
-    [14.75, 1, "overview"],
-    [15.38, 1, "overview"],
-    [16.25, 1.30, "openings", -42],
-    [19.10, 1.30, "openings", -42],
-    [19.87, 1, "overview"],
-    [20.35, 1, "overview"],
-    [20.98, 1.26, "radar-export"],
-    [21.32, 1.26, "radar-export"],
-    [21.98, 1.30, "export", 0, 0.015],
-    [22.90, 1.30, "export", 0, 0.015],
-    [23.52, 1.24, "radar"],
-    [24.18, 1.24, "radar"],
-    [24.95, 1, "overview"],
-    [25.34, 1, "overview"],
-    [26.02, 1.26, "funnel"],
-    [27.68, 1.26, "funnel"],
+    [0.62, 1, "overview"],
+    [2.02, 1.23, "quick-fill"],
+    [6.22, 1.23, "board"],
+    [7.67, 1.23, "board", 0.045],
+    [8.55, 1.23, "board", 0.045],
+    [9.98, 1, "overview"],
+    [PREP_SCROLL_END, 1, "overview"],
+    [12.63, 1.33, "prep"],
+    [13.68, 1.33, "prep"],
+    [14.97, 1.23, "openings"],
+    [20.25, 1.23, "radar-export"],
+    [21.65, 1.23, "export", 0.015],
+    [22.95, 1.23, "export", 0.015],
+    [24.35, 1.23, "radar"],
+    [27.14, 1.23, "funnel"],
     [AT.dissolve, 1, "overview"],
     [LOOP_END, 1, "overview"]
   ];
@@ -1200,43 +1180,56 @@ html, body {
   }
 
   function cameraKeyPoses() {
-    return CAMERA_KEYS.map(([time, targetScale, focus, offsetY = 0, pan = 0]) => {
-      const rect = FOCUS_RECTS[focus];
-      if (!rect) throw new Error("Missing camera focus: " + focus);
+    const sharedTop = enclosingRect(["quick-fill", "board", "prep", "openings", "radar-export", "export", "funnel"]
+      .map(name => FOCUS_RECTS[name]));
+    return CAMERA_KEYS.map(([time, targetScale, focus, pan = 0]) => {
+      const rect = focus === "overview" || focus === "prep" ? FOCUS_RECTS[focus] : sharedTop;
       const fit = focusFit(rect);
-      // Keep exact-fit shots inside the margin after transform rounding.
       const scale = Math.min(targetScale, fit - 0.0001);
       const room = VIEW_H - WIN_H * scale;
-      const vertical = focus === "overview" || room === 0 ? 0.5 : verticalAim(rect, scale, offsetY) / room;
+      const brandAim = 1 - (FOCUS_RECTS.brand.top - WIN_TOP) * scale;
+      const aim = Math.max(verticalAim(rect, scale, focus === "prep" ? 0 : -VIEW_H), brandAim);
+      const vertical = focus === "overview" || room === 0 ? 0.5 : aim / room;
       return { time, scale, fit, focus, pan, vertical };
     });
   }
 
+  function cameraFocus(t, scale) {
+    if (scale <= 1.02) return "overview";
+    // At the chapter boundary the outgoing page is still the only visible layer.
+    if (t <= CHAPTER.board) return "quick-fill";
+    if (t <= CHAPTER.prep) return "board";
+    if (t <= CHAPTER.openings) return "prep";
+    if (t <= CHAPTER.calendar) return "openings";
+    if (t <= CHAPTER.insights) {
+      return t >= AT.openExport && t < AT.downloadCalendar + 0.12 ? "export" : "radar-export";
+    }
+    return "funnel";
+  }
+
   let cameraPoses;
-  function computeCamera(t, prepRect) {
+  function computeCamera(t) {
     const i = cameraPoses.findLastIndex(key => key.time <= t);
     const a = cameraPoses[i];
     const b = cameraPoses[i + 1] ?? a;
-    const p = a === b ? 0 : seg(t, a.time, b.time, quintInOut);
-    const scale = lerp(a.scale, b.scale, p);
-    let focus = p < 0.5 ? a.focus : b.focus;
-    if (a.focus === "overview" || b.focus === "overview") {
-      focus = scale <= 1.02 ? "overview" : a.focus === "overview" ? b.focus : a.focus;
+    // A monotone cubic with zero tangents joins each move to its neighboring holds.
+    const p = a === b ? 0 : seg(t, a.time, b.time, smoothstep);
+    const scale = Math.exp(lerp(Math.log(a.scale), Math.log(b.scale), p));
+    const zoom = seg(scale, 1, 1.1, smoothstep);
+    const horizontal = lerp(0.5, 0.02 + lerp(a.pan, b.pan, p), zoom);
+    // Align matching window and stage anchors so the zoom moves around its focal point.
+    const tx = VIEW_W * horizontal - (WIN_LEFT + WIN_W * horizontal) * scale;
+    let aim;
+    if (a.focus !== "overview" && b.focus !== "overview") {
+      const traveled = a.scale === b.scale ? p : (scale - a.scale) / (b.scale - a.scale);
+      aim = lerp((VIEW_H - WIN_H * a.scale) * a.vertical, (VIEW_H - WIN_H * b.scale) * b.vertical, traveled);
+    } else {
+      const close = a.focus === "overview" ? b : a;
+      const blend = close.scale > 1 ? seg(scale, 1, Math.min(1.1, close.scale), smoothstep) : 0;
+      aim = (VIEW_H - WIN_H * scale) * lerp(0.5, close.vertical, blend);
     }
-    const horizontal = lerp(a.pan, b.pan, p) + lerp(0.5, 0.02, seg(scale, 1, 1.1, smoothstep));
-    // Interpolate within the window's overscan so a push-in cannot expose backdrop.
-    const tx = (VIEW_W - WIN_W * scale) * horizontal - WIN_LEFT * scale;
-    let aim = (VIEW_H - WIN_H * scale) * lerp(a.vertical, b.vertical, p);
-    if (prepRect && (a.focus === "prep" || b.focus === "prep")) {
-      aim = lerp(aim, verticalAim(prepRect, scale), seg(scale, 1.02, 1.04, smoothstep));
-    }
-    if (TOP_FRAMED_FOCUSES.has(focus)) {
-      // Bring the heading into the zoom before the window starts filling the stage.
-      const topAim = verticalAim(FOCUS_RECTS[focus], scale, -VIEW_H);
-      aim = lerp(aim, topAim, seg(scale, 1.02, 1.1, smoothstep));
-    }
-    const ty = Math.max(aim - WIN_TOP * scale, 1 - FOCUS_RECTS.brand.top * scale);
-    return { scale, tx, ty, focus };
+    const ty = aim - WIN_TOP * scale;
+    return { scale, tx, ty, focus: cameraFocus(t, scale) };
   }
 
   const ANCHORS = {};
@@ -1464,12 +1457,7 @@ html, body {
     viewIn.style.transform = isTransitioning ? \`translateY(\${10 * (1 - progress)}px)\` : "none";
 
     const camera = document.getElementById("demo-camera");
-    let prepRect;
-    if (start === CHAPTER.prep) {
-      camera.style.transform = "";
-      prepRect = focusRect("prep", viewIn);
-    }
-    const cam = computeCamera(t, prepRect);
+    const cam = computeCamera(t);
     const windowBottom = (WIN_TOP + WIN_H) * cam.scale + cam.ty;
     const footerBottom = windowBottom - (1 + ${SIDEBAR_BOTTOM_PADDING}) * cam.scale;
     const footerOffset = Math.min(0, (VIEW_H - MARGIN - 1 - footerBottom) / cam.scale);
@@ -1493,7 +1481,7 @@ html, body {
     const squareCorners = seg(cam.scale, 1.04, ${ZOOM_COVER_THRESHOLD}, smoothstep);
     document.getElementById("demo-window").style.borderRadius = \`\${16 * (1 - squareCorners)}px\`;
     camera.style.transform =
-      \`translate(\${cam.tx.toFixed(3)}px, \${cam.ty.toFixed(3)}px) scale(\${cam.scale.toFixed(5)})\`;
+      \`translate(\${cam.tx}px, \${cam.ty}px) scale(\${cam.scale})\`;
 
     const cur = cursorState(t);
     const cursor = document.getElementById("demo-cursor");
@@ -1597,6 +1585,8 @@ html, body {
     const visibleArea = visibleWidth * visibleHeight;
     return {
       scale: cam.scale,
+      tx: cam.tx,
+      ty: cam.ty,
       focus: cam.focus,
       focusMargin: focus ? edgeMargin(stageBounds, focus) : null,
       windowVisibleRatio: visibleArea / (win.width * win.height),
@@ -1799,10 +1789,25 @@ async function openScene(browser, sceneHtml, deviceScaleFactor) {
   return page;
 }
 
-async function frameReport(page, frame) {
+const MOTION_LIMITS = { zoomSpeed: 0.6, zoomAcceleration: 3, panSpeed: 700, panAcceleration: 3000 };
+
+function cameraMotion(current, previous, prior) {
+  if (!previous) return null;
+  const dx = current.tx - previous.tx;
+  const dy = current.ty - previous.ty;
+  const ds = current.scale - previous.scale;
+  return {
+    zoomSpeed: Math.abs(ds) * FPS,
+    zoomAcceleration: prior ? Math.abs(ds - (previous.scale - prior.scale)) * FPS ** 2 : 0,
+    panSpeed: Math.hypot(dx, dy) * FPS,
+    panAcceleration: prior ? Math.hypot(dx - (previous.tx - prior.tx), dy - (previous.ty - prior.ty)) * FPS ** 2 : 0
+  };
+}
+
+async function frameReport(page, frame, previous, prior) {
   const t = frame / FPS;
   const result = await page.evaluate(time => window.__auditFrame(time), t);
-  return { frame, t, ...result };
+  return { frame, t, ...result, motion: cameraMotion(result, previous, prior) };
 }
 
 const FRAMING_RULES = {
@@ -1813,7 +1818,10 @@ const FRAMING_RULES = {
   toast: frame => frame.toastMargin === null ? null : frame.toastMargin - FRAME_MARGIN,
   slicedText: frame => -frame.slicedText.length,
   cursor: frame => frame.clippedAnchors.length ? Math.min(frame.cursorMargin ?? 0, -0.01) : frame.cursorMargin,
-  boardViewport: frame => frame.boardMargin === null ? null : frame.boardMargin + 0.01
+  boardViewport: frame => frame.boardMargin === null ? null : frame.boardMargin + 0.01,
+  motion: frame => frame.motion
+    ? Math.min(...Object.entries(MOTION_LIMITS).map(([name, limit]) => 1 - frame.motion[name] / limit))
+    : null
 };
 
 function failsFraming(frame) {
@@ -1826,24 +1834,35 @@ function failsFraming(frame) {
 async function auditFrames(page) {
   const cameraKeys = await page.evaluate(() => window.__cameraKeys);
   const frames = [];
-  for (let i = 0; i < TOTAL_FRAMES; i++) frames.push(await frameReport(page, i));
+  for (let i = 0; i < TOTAL_FRAMES; i++) {
+    frames.push(await frameReport(page, i, frames.at(-1), frames.at(-2)));
+  }
   const failures = frames.filter(failsFraming);
   const worst = Object.fromEntries(Object.entries(FRAMING_RULES).map(([name, clearance]) => [
     name,
     frames.filter(frame => clearance(frame) !== null)
       .sort((a, b) => clearance(a) - clearance(b)).slice(0, 5)
   ]));
-  console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, cameraKeys, worst }, null, 2));
+  const worstMotion = Object.fromEntries(Object.entries(MOTION_LIMITS).map(([name, limit]) => {
+    const worstFrames = frames.slice(1).sort((a, b) => b.motion[name] - a.motion[name]).slice(0, 5)
+      .map(({ frame, t, motion }) => ({ frame, t, value: motion[name] }));
+    return [name, { limit, peak: worstFrames[0].value, worstFrames }];
+  }));
+  console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, cameraKeys, worst, worstMotion }, null, 2));
   if (failures.length) throw new Error(`Framing audit failed on ${failures.length} frames`);
 }
 
 async function captureFrames(page, framesPath) {
   const offsets = [0];
   const fd = fs.openSync(framesPath, "wx");
+  let previous;
+  let prior;
   try {
     for (let i = 0; i < TOTAL_FRAMES; i++) {
-      const report = await frameReport(page, i);
+      const report = await frameReport(page, i, previous, prior);
       if (failsFraming(report)) throw new Error(`Framing audit failed: ${JSON.stringify(report)}`);
+      prior = previous;
+      previous = report;
       const jpeg = await page.screenshot({ type: "jpeg", quality: 90 });
       for (let written = 0; written < jpeg.length;) {
         const size = fs.writeSync(fd, jpeg, written, jpeg.length - written);
