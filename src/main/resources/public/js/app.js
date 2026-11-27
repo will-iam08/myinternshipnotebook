@@ -28,6 +28,7 @@ import {
   validateSetup, buildStarterApplications
 } from "./onboarding.js";
 import { commitStarterNotebook } from "./notebook-commit.js";
+import { initLandingMotion } from "./motion/landing-motion.js";
 import {
   START_MODES, USE_CASES, FOCUS_AREAS, MAX_USE_CASES, DEFAULT_START_MODE, DEFAULT_USE_CASES, DEFAULT_FOCUS_AREAS,
   START_MODE_COPY, USE_CASE_COPY, FOCUS_COPY, buildNotebookPlan, validatePlan, cleanUseCases, cleanFocusAreas
@@ -2487,11 +2488,20 @@ function isLandingGated() {
   return shouldGateWithLanding({ browserMode: BROWSER_MODE, session: readActiveSession(storage) });
 }
 
+// Scroll engine and scenes for the welcome page; created while it shows and torn down when it hides.
+let landingMotion = null;
+
+function syncLandingMotion(gated) {
+  if (gated && landingShell && !landingMotion) landingMotion = initLandingMotion({ shell: landingShell });
+  else if (!gated && landingMotion) { landingMotion.destroy(); landingMotion = null; }
+}
+
 function syncShellVisibility() {
   const gated = isLandingGated();
   document.documentElement.dataset.shell = gated ? "landing" : "notebook";
   if (landingShell) landingShell.hidden = !gated;
   if (appShell) appShell.hidden = gated;
+  syncLandingMotion(gated);
   if (skipLink) skipLink.setAttribute("href", gated ? "#landing-main" : "#view");
   if (gated) {
     document.title = "My Internship Notebook";
@@ -3900,6 +3910,11 @@ function smoothScrollToSection(targetId, { duration = 560 } = {}) {
   const targetY = Math.max(0, startY + targetRect.top - (targetId === "hero" ? headerHeight : headerHeight - 4));
   const distance = targetY - startY;
   const clampedDuration = clampScrollDuration(duration);
+  // On desktop the scroll engine owns scrolling, so it runs the glide (and any wheel turn can interrupt it).
+  if (landingMotion?.engineEnabled()) {
+    landingMotion.scrollTo(targetY, { duration: clampedDuration });
+    return;
+  }
   // Each frame jumps straight to its position ("instant"), so the page's CSS smooth scrolling
   // doesn't start a second animation on every frame and make this one stutter.
   if (reducedMotion() || Math.abs(distance) < 2) {
