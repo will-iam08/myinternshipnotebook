@@ -12,10 +12,11 @@ const STYLES_PATH = path.join(PUBLIC_DIR, "styles.css");
 
 const VIEWPORT_WIDTH = 1280;
 const VIEWPORT_HEIGHT = 720;
-const WINDOW_WIDTH = 1136;
-const WINDOW_HEIGHT = 636;
+const WINDOW_WIDTH = 1152;
+const WINDOW_HEIGHT = 648;
 const FRAME_MARGIN = 12;
-const MAX_EMPTY_RATIO = 0.22;
+const FOCUS_MARGIN = 24;
+const ZOOM_COVER_THRESHOLD = 1.12;
 const DEVICE_SCALE_FACTOR = 2;
 const OUT_WIDTH = 1920;
 const OUT_HEIGHT = 1080;
@@ -194,6 +195,17 @@ html, body {
   font-size: 1.92rem;
 }
 
+.demo-app .board {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  overflow: hidden;
+}
+
+.demo-app .board .column { min-width: 0; }
+.demo-board-view .app-card { min-width: 0; gap: 4px; padding: 8px 9px 8px 12px; }
+.demo-board-view .demo-history-stamp { font-size: 0.64rem; }
+.demo-board-view .view-head { max-width: 680px; }
+
 .demo-window :is(.card, .app-card, .column, .sheet-page, .prep-group, .demo-mock-card,
   .demo-modal-card, .demo-field-box, .demo-quickfill-display, .button:not(.primary),
   .filter-chip, .prep-mark[aria-pressed="false"]) {
@@ -207,19 +219,21 @@ html, body {
 
 .demo-opening-row {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr) 128px 106px 64px;
+  grid-template-columns: 108px minmax(0, 1fr) 105px 88px 64px;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .demo-opening-row + .demo-opening-row { border-top: 1px solid var(--demo-border); }
 .demo-opening-row .button { min-height: 36px; }
+.demo-app :is(.demo-openings-view, .demo-calendar-view) .view-head,
+.demo-openings-feed { max-width: 646px; }
 .demo-openings-list { padding: 4px 8px; }
 .demo-export { position: relative; z-index: 8; }
 .demo-export-menu { position: absolute; right: 0; top: calc(100% + 8px); width: max-content; padding: 6px; }
 .demo-export-menu .button { background: var(--paper-2); }
-.demo-prep-page { margin: 18px 28px 18px 42px; }
+.demo-prep-page { width: 624px; margin: 18px 28px 18px 42px; }
 .demo-prep-page .prep-mark { min-width: 116px; justify-content: center; }
 .demo-prep-page .entry-head { margin-bottom: 10px; }
 .demo-prep-page .stepper { margin-bottom: 12px; }
@@ -227,6 +241,7 @@ html, body {
 .demo-prep-page .prep-mark { min-height: 36px; }
 .demo-prep-page .entry-fields { margin-bottom: 12px; }
 .demo-window .ring { width: 96px; height: 96px; }
+.demo-app .demo-insights-view { max-width: 746px; margin-left: 0; }
 .demo-window :is(.funnel-row, .skill-bar) { min-height: 34px; }
 .demo-loop-frame { position: absolute; inset: 0; z-index: 100; pointer-events: none; }
 
@@ -631,7 +646,7 @@ html, body {
     const menuOpen = calendar && t >= AT.openExport && t < AT.downloadCalendar + 0.12;
 
     return \`
-      <section class="view">
+      <section class="view \${calendar ? "demo-calendar-view" : ""}">
         <header class="view-head">
           <div>
             <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
@@ -740,7 +755,7 @@ html, body {
     const ghostStyle = \`left:\${dragX}px; top:\${dragY}px; width:\${dragStartPt?.width}px; transform: translate(-50%, -50%) scale(\${1 + 0.048 * lift}) rotate(\${-1.8 * lift}deg)\`;
 
     return \`
-      <section class="view">
+      <section class="view demo-board-view">
         <header class="view-head">
           <div>
             <p class="eyebrow" style="--tab: var(--tab-board)">Board</p>
@@ -752,10 +767,10 @@ html, body {
             <button type="button" class="filter-chip" aria-pressed="false">TypeScript (\${matches("TypeScript")})</button>
           </div>
         </header>
-        <div class="board" style="grid-auto-columns: minmax(170px, 1fr); gap: 10px">
+        <div class="board">
           \${STAGES.map(stage => {
             const column = cards.filter(app => app.stage === stage && (!isDragging || app.company !== DEMO.stripe.company));
-            if (dropped) column.sort((a, b) => Number(b.company === DEMO.stripe.company) - Number(a.company === DEMO.stripe.company));
+            column.sort((a, b) => Number(b.company === DEMO.stripe.company) - Number(a.company === DEMO.stripe.company));
             return \`<section class="column st-\${stage} \${isDragging && stage === "INTERVIEW" ? "drop" : ""}">
               <div class="column-head"><span class="dot"></span><h2>\${stage}</h2><span class="count">\${column.length}</span></div>
               <div class="column-cards">
@@ -777,7 +792,7 @@ html, body {
     const summerOpenings = DEMO.openings.filter(opening => opening.term === DEMO.openingTerm);
     const openings = filtered ? summerOpenings : DEMO.openings;
     return \`
-      <section class="view">
+      <section class="view demo-openings-view">
         <header class="view-head">
           <div>
             <p class="eyebrow" style="--tab: var(--tab-today)">Today</p>
@@ -786,24 +801,26 @@ html, body {
           </div>
           <button class="button \${t >= CHAPTER.calendar - 0.25 ? "is-hovered" : ""}" data-anchor="nav-calendar" type="button">Deadline Radar</button>
         </header>
-        <div class="filters" style="margin-bottom: 12px">
-          <button class="filter-chip" aria-pressed="\${!filtered}" type="button">All terms (\${DEMO.openings.length})</button>
-          <button class="filter-chip \${!filtered && t >= AT.filterTerm - 0.25 ? "is-hovered" : ""}" data-anchor="filter-term" aria-pressed="\${filtered}" type="button">\${DEMO.openingTerm} (\${summerOpenings.length})</button>
-        </div>
-        <div class="card demo-openings-list">
-          \${openings.map(opening => {
-            const featured = opening === featuredOpening;
-            const isSaved = featured && saved;
-            const hover = featured && !isSaved && t >= AT.saveOpening - 0.25;
-            return \`
-              <article class="demo-opening-row">
-                <strong>\${opening.company}</strong>
-                <span>\${opening.role}</span>
-                <small>\${opening.location}</small>
-                <small>\${opening.term}</small>
-                <button class="button small \${hover ? "is-hovered" : ""}" \${featured ? 'data-anchor="save-opening"' : ""} \${isSaved ? 'aria-pressed="true"' : ""} type="button">\${isSaved ? "Saved" : "Save"}</button>
-              </article>\`;
-          }).join("")}
+        <div class="demo-openings-feed">
+          <div class="filters" style="margin-bottom: 12px">
+            <button class="filter-chip" aria-pressed="\${!filtered}" type="button">All terms (\${DEMO.openings.length})</button>
+            <button class="filter-chip \${!filtered && t >= AT.filterTerm - 0.25 ? "is-hovered" : ""}" data-anchor="filter-term" aria-pressed="\${filtered}" type="button">\${DEMO.openingTerm} (\${summerOpenings.length})</button>
+          </div>
+          <div class="card demo-openings-list">
+            \${openings.map(opening => {
+              const featured = opening === featuredOpening;
+              const isSaved = featured && saved;
+              const hover = featured && !isSaved && t >= AT.saveOpening - 0.25;
+              return \`
+                <article class="demo-opening-row">
+                  <strong>\${opening.company}</strong>
+                  <span>\${opening.role}</span>
+                  <small>\${opening.location}</small>
+                  <small>\${opening.term}</small>
+                  <button class="button small \${hover ? "is-hovered" : ""}" \${featured ? 'data-anchor="save-opening"' : ""} \${isSaved ? 'aria-pressed="true"' : ""} type="button">\${isSaved ? "Saved" : "Save"}</button>
+                </article>\`;
+            }).join("")}
+          </div>
         </div>
       </section>
     \`;
@@ -897,7 +914,7 @@ html, body {
     const topSkills = [...skillCounts].sort((a, b) => b[1] - a[1]).slice(0, 4);
 
     return \`
-      <section class="view">
+      <section class="view demo-insights-view">
         <header class="view-head">
           <div>
             <p class="eyebrow" style="--tab: var(--tab-insights)">Insights</p>
@@ -1032,54 +1049,105 @@ html, body {
     \`;
   }
 
-  // Camera keyframes: [time, scale, focusX, focusY] in unzoomed stage coordinates.
-  const CAMERA_KEYS = [
-    [0, 1, 640, 360],
-    [AT.newPage, 1.04, 610, 350],
-    [AT.focusLink, 1.09, 650, 355],
-    [AT.saveStripe, 1.09, 650, 365],
-    [4.65, 1.03, 625, 360],
-    [CHAPTER.board, 1.03, 625, 360],
-    [AT.grabStripe, 1.08, 650, 355],
-    [AT.dropStripe, 1.085, 670, 355],
-    [AT.filterPython, 1.075, 655, 345],
-    [CHAPTER.prep, 1.04, 650, 360],
-    [AT.markPracticed, 1.09, 660, 365],
-    [14.1, 1.09, 660, 370],
-    [CHAPTER.openings, 1.035, 630, 360],
-    [AT.filterTerm, 1.075, 650, 355],
-    [AT.saveOpening, 1.08, 655, 365],
-    [CHAPTER.calendar, 1.045, 655, 355],
-    [AT.openExport, 1.08, 660, 345],
-    [23.6, 1.085, 650, 365],
-    [CHAPTER.insights, 1.04, 625, 355],
-    [26.2, 1.085, 650, 365],
-    [28.15, 1.085, 650, 365],
-    [AT.dissolve, 1, 640, 360],
-    [LOOP_END, 1, 640, 360]
-  ];
+  const WIN_LEFT = (VIEW_W - WIN_W) / 2;
+  const WIN_TOP = (VIEW_H - WIN_H) / 2;
+  const VIEW_TRANSITION_SEC = 0.32;
+  const BOARD_APPROACH = CHAPTER.board + VIEW_TRANSITION_SEC + 0.05;
+  const FOCUS_SELECTORS = {
+    overview: "#demo-window",
+    "quick-fill": "#demo-modal .demo-modal-card",
+    "board-columns": ".board :is(.column.st-APPLIED, .column.st-INTERVIEW)",
+    "python-chip": '[data-anchor="chip-python"]',
+    "stripe-interview": '[data-anchor="card-stripe-interview"]',
+    prep: ".demo-prep-page .prep",
+    openings: ".demo-openings-feed",
+    radar: '[data-anchor="radar-card"]',
+    export: ".demo-export, .demo-export-menu",
+    funnel: '[data-anchor="funnel-card"]'
+  };
 
+  // [Time, scale, focus, vertical aim offset, horizontal pan fraction].
+  const CAMERA_KEYS = [
+    [0, 1, "overview"],
+    [AT.newPage, 1, "overview"],
+    [1.13, 1.35, "quick-fill"],
+    [3.66, 1.35, "quick-fill"],
+    [4.36, 1, "overview"],
+    [BOARD_APPROACH, 1, "overview"],
+    [5.85, 1.35, "board-columns", -15],
+    [7.35, 1.35, "board-columns", -15],
+    [7.75, 1.22, "board-columns", -44],
+    [8.18, 1.30, "python-chip", 0, 0.045],
+    [8.66, 1.30, "python-chip", 0, 0.045],
+    [8.76, 1.30, "stripe-interview"],
+    [9.42, 1.30, "stripe-interview", 105],
+    [10.05, 1, "overview"],
+    [10.55, 1, "overview"],
+    [11.9, 1.40, "prep"],
+    [13.97, 1.40, "prep"],
+    [14.75, 1, "overview"],
+    [15.38, 1, "overview"],
+    [16.25, 1.30, "openings", -42],
+    [19.10, 1.30, "openings", -42],
+    [19.87, 1, "overview"],
+    [20.35, 1, "overview"],
+    [20.98, 1.26, "radar", -38],
+    [21.32, 1.26, "radar", -38],
+    [21.98, 1.30, "export", 0, 0.035],
+    [22.90, 1.30, "export", 0, 0.035],
+    [23.52, 1.26, "radar"],
+    [24.18, 1.26, "radar"],
+    [24.95, 1, "overview"],
+    [25.34, 1, "overview"],
+    [26.08, 1.30, "funnel"],
+    [28.25, 1.30, "funnel"],
+    [AT.dissolve, 1, "overview"],
+    [LOOP_END, 1, "overview"]
+  ];
+  const FOCUS_RECTS = {};
+
+  function focusRect(name, root = document) {
+    const rects = [...root.querySelectorAll(FOCUS_SELECTORS[name])].filter(visible)
+      .map(el => el.getBoundingClientRect());
+    if (!rects.length) return null;
+    return {
+      left: Math.min(...rects.map(r => r.left)),
+      top: Math.min(...rects.map(r => r.top)),
+      right: Math.max(...rects.map(r => r.right)),
+      bottom: Math.max(...rects.map(r => r.bottom))
+    };
+  }
+
+  function cameraKeyPoses() {
+    return CAMERA_KEYS.map(([time, scale, focus, offsetY = 0, pan = 0]) => {
+      const rect = FOCUS_RECTS[focus];
+      if (!rect) throw new Error("Missing camera focus: " + focus);
+      const centerY = (rect.top + rect.bottom) / 2 + offsetY;
+      const room = VIEW_H - WIN_H * scale;
+      const vertical = focus === "overview" || room === 0
+        ? 0.5
+        : clamp((VIEW_H / 2 - (centerY - WIN_TOP) * scale) / room, 0, 1);
+      return { time, scale, focus, pan, vertical };
+    });
+  }
+
+  let cameraPoses;
   function computeCamera(t) {
-    const width = VIEW_W;
-    const height = VIEW_H;
-    const margin = MARGIN + 1;
-    const scaleLimit = Math.min((width - 2 * margin) / WIN_W, (height - 2 * margin) / WIN_H);
-    let scale = 1, fx = width / 2, fy = height / 2;
-    const next = CAMERA_KEYS.findIndex(key => key[0] > t);
-    if (next > 0) {
-      const [t0, s0, x0, y0] = CAMERA_KEYS[next - 1];
-      const [t1, s1, x1, y1] = CAMERA_KEYS[next];
-      const p = seg(t, t0, t1, cubicInOut);
-      scale = Math.min(lerp(s0, s1, p), scaleLimit);
-      fx = lerp(x0, x1, p);
-      fy = lerp(y0, y1, p);
+    const i = cameraPoses.findLastIndex(key => key.time <= t);
+    const a = cameraPoses[i];
+    const b = cameraPoses[i + 1] ?? a;
+    const p = a === b ? 0 : seg(t, a.time, b.time, quintInOut);
+    const scale = lerp(a.scale, b.scale, p);
+    const horizontal = lerp(a.pan, b.pan, p) + lerp(0.5, 0.02, seg(scale, 1, 1.1, smoothstep));
+    const vertical = lerp(0.005, 0.995, lerp(a.vertical, b.vertical, p));
+    // Interpolate within the window's overscan so a push-in cannot expose backdrop.
+    const tx = (VIEW_W - WIN_W * scale) * horizontal - WIN_LEFT * scale;
+    const ty = (VIEW_H - WIN_H * scale) * vertical - WIN_TOP * scale;
+    let focus = p < 0.5 ? a.focus : b.focus;
+    if (a.focus === "overview" || b.focus === "overview") {
+      focus = scale <= 1.02 ? "overview" : a.focus === "overview" ? b.focus : a.focus;
     }
-    const pan = (focus, stageSize, windowSize) => clamp(
-      stageSize / 2 - focus * scale,
-      margin - (stageSize - windowSize) / 2 * scale,
-      stageSize - margin - (stageSize + windowSize) / 2 * scale
-    );
-    return { scale, tx: pan(fx, width, WIN_W), ty: pan(fy, height, WIN_H) };
+    return { scale, tx, ty, focus };
   }
 
   const ANCHORS = {};
@@ -1101,23 +1169,38 @@ html, body {
       }
     };
 
+    const captureFocus = (...names) => {
+      for (const name of names) FOCUS_RECTS[name] = focusRect(name);
+    };
+    captureFocus("overview");
     capture(document, "nav-new", "nav-board", "nav-today", "nav-insights");
     renderModal(0, { forceOpen: true });
     capture(document, "quickfill-input", "quickfill-fill", "modal-save");
+    captureFocus("quick-fill");
     renderModal(0);
 
     view.innerHTML = renderBoardView(CHAPTER.board, { measureDropSlot: true });
     capture(view, "card-stripe-applied", "slot-interview", "chip-python");
+    captureFocus("python-chip");
+    view.innerHTML = renderBoardView(AT.dropStripe + 0.2);
+    captureFocus("board-columns");
     view.innerHTML = renderBoardView(AT.filterPython);
     capture(view, "card-stripe-interview");
+    captureFocus("stripe-interview");
     view.innerHTML = renderEntryPrepView(CHAPTER.prep);
     capture(view, "btn-mark-practiced");
+    view.innerHTML = renderEntryPrepView(14);
+    captureFocus("prep");
+    view.innerHTML = renderOpeningsView(CHAPTER.openings);
+    captureFocus("openings");
     view.innerHTML = renderOpeningsView(AT.filterTerm);
     capture(view, "filter-term", "save-opening", "nav-calendar");
     view.innerHTML = renderTodayView(AT.openExport, { calendar: true });
     capture(view, "open-export", "download-calendar", "radar-card");
+    captureFocus("radar", "export");
     view.innerHTML = renderInsightsView(CHAPTER.insights);
     capture(view, "funnel-card");
+    captureFocus("funnel");
   }
 
   function pt(name, dx = 0, dy = 0) {
@@ -1156,7 +1239,7 @@ html, body {
       [AT.fill - 0.14, AT.fill + 0.06, pt("quickfill-fill"), "arrow", 1],
       [3.10, 3.10, CLIPPER_READ, "arrow", 1],
       [AT.saveStripe - 0.35, AT.saveStripe + 0.06, pt("modal-save"), "arrow", -1],
-      [CHAPTER.board - 0.14, CHAPTER.board + 0.24, pt("nav-board"), "arrow", 1],
+      [CHAPTER.board - 0.14, BOARD_APPROACH, pt("nav-board"), "arrow", 1],
       [AT.grabStripe - 0.25, AT.grabStripe, pt("card-stripe-applied"), "grab", 0],
       [AT.dropStripe, AT.dropStripe + 0.23, pt("slot-interview"), "grab", -1],
       [AT.filterPython - 0.21, AT.filterPython + 0.15, pt("chip-python"), "arrow", 1],
@@ -1256,7 +1339,7 @@ html, body {
     }
     navNew.classList.toggle("is-hovered", t >= AT.newPage - 0.14 && t < AT.newPage + 0.04);
 
-    const transitionEnd = start + 0.32;
+    const transitionEnd = start + VIEW_TRANSITION_SEC;
     const isTransitioning = sceneIndex > 0 && t < transitionEnd;
     const progress = isTransitioning ? seg(t, start, transitionEnd, quintOut) : 1;
     viewOut.style.display = isTransitioning ? "block" : "none";
@@ -1267,19 +1350,26 @@ html, body {
     viewIn.style.opacity = progress;
     viewIn.style.transform = isTransitioning ? \`translateY(\${10 * (1 - progress)}px)\` : "none";
 
+    const cam = computeCamera(t);
     const message = TOASTS.find(([from, until]) => t >= from && t < until);
     toast.style.display = message ? "flex" : "none";
     if (message) {
       const [from, until, label] = message;
       const rise = springOut(t - from, 280, 22);
       const fade = seg(t, until - 0.28, until, quintOut);
+      const riseOffset = (1 - rise) * 12 + fade * 8;
+      const right = (WIN_LEFT + WIN_W) * cam.scale + cam.tx;
+      const bottom = (WIN_TOP + WIN_H) * cam.scale + cam.ty;
       toast.textContent = label;
       toast.style.opacity = clamp(rise * 1.4, 0, 1) * (1 - fade);
-      toast.style.transform = \`translateY(\${(1 - rise) * 12 + fade * 8}px)\`;
+      toast.style.right = \`\${Math.max(20, (right - VIEW_W + MARGIN + 2) / cam.scale)}px\`;
+      toast.style.bottom = \`\${Math.max(20, (bottom - VIEW_H + MARGIN + 2) / cam.scale + riseOffset)}px\`;
+      toast.style.transform = \`translateY(\${riseOffset}px)\`;
     }
     renderModal(t);
 
-    const cam = computeCamera(t);
+    const squareCorners = seg(cam.scale, 1.04, ${ZOOM_COVER_THRESHOLD}, smoothstep);
+    document.getElementById("demo-window").style.borderRadius = \`\${16 * (1 - squareCorners)}px\`;
     document.getElementById("demo-camera").style.transform =
       \`translate(\${cam.tx.toFixed(3)}px, \${cam.ty.toFixed(3)}px) scale(\${cam.scale.toFixed(5)})\`;
 
@@ -1310,59 +1400,85 @@ html, body {
     }
   };
 
-  function contains(outer, inner) {
-    return inner.width > 0 && inner.height > 0 &&
-      inner.left >= outer.left && inner.top >= outer.top &&
-      inner.right <= outer.right && inner.bottom <= outer.bottom;
-  }
-
-  const frameBounds = { left: MARGIN, top: MARGIN, right: VIEW_W - MARGIN, bottom: VIEW_H - MARGIN };
+  const stageBounds = { left: 0, top: 0, right: VIEW_W, bottom: VIEW_H };
   const visible = el => el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
-  window.__auditFrame = function (t) {
-    window.__setDemoTime(t);
-    const win = document.getElementById("demo-window").getBoundingClientRect();
-    const clippedAnchors = contains(frameBounds, win) ? [] : ["camera target: window"];
-    const modal = document.querySelector("#demo-modal > .demo-modal-card");
-    const toast = document.getElementById("demo-toast");
-    for (const [name, el] of [["camera target: modal", modal], ["toast", toast]]) {
-      if (!el || !visible(el)) continue;
-      const r = el.getBoundingClientRect();
-      if (!contains(frameBounds, r) || !contains(win, r)) clippedAnchors.push(name);
+  const edgeMargin = (outer, inner) => Math.min(
+    inner.left - outer.left, inner.top - outer.top, outer.right - inner.right, outer.bottom - inner.bottom
+  );
+
+  function anchorMargin(name, cam, win) {
+    const matches = [...win.querySelectorAll('[data-anchor="' + name + '"]')].filter(visible);
+    if (!matches.length) {
+      const a = ANCHORS[name];
+      const left = a.left * cam.scale + cam.tx;
+      const top = a.top * cam.scale + cam.ty;
+      return edgeMargin(stageBounds, {
+        left, top, right: left + a.width * cam.scale, bottom: top + a.height * cam.scale
+      }) - MARGIN;
     }
 
+    return Math.min(...matches.map(el => {
+      const r = el.getBoundingClientRect();
+      const margins = [edgeMargin(stageBounds, r) - MARGIN];
+      for (const selector of [".board", ".demo-view-layer"]) {
+        const viewport = el.closest(selector);
+        if (viewport) margins.push(edgeMargin(viewport.getBoundingClientRect(), r));
+      }
+      return Math.min(...margins);
+    }));
+  }
+
+  window.__auditFrame = function (t) {
+    window.__setDemoTime(t);
     const time = t >= LOOP_END ? 0 : t;
     const cam = computeCamera(time);
+    const windowEl = document.getElementById("demo-window");
+    const win = windowEl.getBoundingClientRect();
+    const focus = cam.focus === "overview" ? win : focusRect(cam.focus, windowEl);
+    const toast = document.getElementById("demo-toast");
+    const sidebar = windowEl.querySelector(".cover").getBoundingClientRect();
+    const sidebarMargin = Math.max(sidebar.left + 12 * cam.scale, cam.scale - sidebar.right);
+    const toastMargin = visible(toast) ? edgeMargin(stageBounds, toast.getBoundingClientRect()) : null;
+
     const upcoming = new Set(cursorStops
       .filter(([arrival, departure, pos]) => pos.anchor && departure >= time && arrival <= time + 0.5)
       .map(([, , pos]) => pos.anchor));
-    for (const name of upcoming) {
-      const anchor = ANCHORS[name];
-      const left = anchor.left * cam.scale + cam.tx;
-      const top = anchor.top * cam.scale + cam.ty;
-      const width = anchor.width * cam.scale;
-      const height = anchor.height * cam.scale;
-      const projected = { left, top, width, height, right: left + width, bottom: top + height };
-      const current = [...document.querySelectorAll('#demo-window [data-anchor="' + name + '"]')].filter(visible);
-      const liveClipped = current.some(el => {
-        const r = el.getBoundingClientRect();
-        if (!contains(frameBounds, r)) return true;
-        const viewport = el.closest(".board, .demo-view-layer");
-        return viewport && !contains(viewport.getBoundingClientRect(), r);
-      });
-      if (!contains(frameBounds, projected) || liveClipped) clippedAnchors.push(name);
+    const margins = [...upcoming].map(name => [name, anchorMargin(name, cam, windowEl)]);
+    const clippedAnchors = margins.filter(([, margin]) => margin < 0).map(([name]) => name);
+    const cursorMargin = margins.length ? Math.min(...margins.map(([, margin]) => margin)) : null;
+
+    let boardMargin = null;
+    if (time >= BOARD_APPROACH && time < AT.grabStripe) {
+      const board = windowEl.querySelector(".board");
+      const viewport = board?.getBoundingClientRect();
+      const applied = board?.querySelector(".column.st-APPLIED");
+      const card = applied?.querySelector('[data-anchor="card-stripe-applied"]');
+      if (!applied || !card) clippedAnchors.push("card-stripe-applied");
+      else boardMargin = Math.min(
+        edgeMargin(viewport, applied.getBoundingClientRect()),
+        edgeMargin(viewport, card.getBoundingClientRect())
+      );
     }
 
-    const width = Math.max(0, Math.min(win.right, VIEW_W) - Math.max(win.left, 0));
-    const height = Math.max(0, Math.min(win.bottom, VIEW_H) - Math.max(win.top, 0));
-    const area = width * height;
+    const visibleWidth = Math.max(0, Math.min(win.right, VIEW_W) - Math.max(win.left, 0));
+    const visibleHeight = Math.max(0, Math.min(win.bottom, VIEW_H) - Math.max(win.top, 0));
+    const visibleArea = visibleWidth * visibleHeight;
     return {
-      windowVisibleRatio: area / (win.width * win.height),
-      clippedAnchors,
-      emptyRatio: 1 - area / (VIEW_W * VIEW_H)
+      scale: cam.scale,
+      focus: cam.focus,
+      focusMargin: focus ? edgeMargin(stageBounds, focus) : null,
+      windowVisibleRatio: visibleArea / (win.width * win.height),
+      emptyRatio: 1 - visibleArea / (VIEW_W * VIEW_H),
+      sidebarMargin,
+      toastMargin,
+      cursorMargin,
+      boardMargin,
+      clippedAnchors
     };
   };
 
   measureAnchors();
+  cameraPoses = cameraKeyPoses();
   cursorStops = buildCursorTimeline();
   window.__setDemoTime(0);
   const stage = document.getElementById("demo-stage");
@@ -1562,19 +1678,32 @@ async function frameReport(page, frame) {
   return { frame, t, ...result };
 }
 
+const FRAMING_RULES = {
+  focus: frame => (frame.focusMargin ?? -Infinity) - FOCUS_MARGIN,
+  zoomedBackdrop: frame => frame.scale > ZOOM_COVER_THRESHOLD ? -frame.emptyRatio : null,
+  overviewWindow: frame => frame.scale <= 1.11 ? frame.windowVisibleRatio - 1 + 1e-9 : null,
+  sidebar: frame => frame.sidebarMargin,
+  toast: frame => frame.toastMargin === null ? null : frame.toastMargin - FRAME_MARGIN,
+  cursor: frame => frame.clippedAnchors.length ? Math.min(frame.cursorMargin ?? 0, -0.01) : frame.cursorMargin,
+  boardViewport: frame => frame.boardMargin === null ? null : frame.boardMargin + 0.01
+};
+
 function failsFraming(frame) {
-  return frame.clippedAnchors.length > 0 || frame.emptyRatio > MAX_EMPTY_RATIO;
+  return Object.values(FRAMING_RULES).some(clearance => {
+    const value = clearance(frame);
+    return value !== null && value < 0;
+  });
 }
 
 async function auditFrames(page) {
   const frames = [];
   for (let i = 0; i < TOTAL_FRAMES; i++) frames.push(await frameReport(page, i));
   const failures = frames.filter(failsFraming);
-  const worst = {
-    window: [...frames].sort((a, b) => a.windowVisibleRatio - b.windowVisibleRatio).slice(0, 5),
-    backdrop: [...frames].sort((a, b) => b.emptyRatio - a.emptyRatio).slice(0, 5),
-    failures: failures.sort((a, b) => b.clippedAnchors.length - a.clippedAnchors.length).slice(0, 10)
-  };
+  const worst = Object.fromEntries(Object.entries(FRAMING_RULES).map(([name, clearance]) => [
+    name,
+    frames.filter(frame => clearance(frame) !== null)
+      .sort((a, b) => clearance(a) - clearance(b)).slice(0, 5)
+  ]));
   console.log(JSON.stringify({ frames: TOTAL_FRAMES, failures: failures.length, worst }, null, 2));
   if (failures.length) throw new Error(`Framing audit failed on ${failures.length} frames`);
 }
