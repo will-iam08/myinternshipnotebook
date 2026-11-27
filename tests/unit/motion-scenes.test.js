@@ -147,8 +147,7 @@ test("inactive scenes are not rendered", () => {
   win.scrollY = 1400;
   listeners.get("scroll")();
   engineFrame()(1800);
-  assert.equal(frames.size, 1);
-  step();
+  assert.equal(frames.size, 0);
   assert.equal(progress(), "0.5000");
   assert.equal(updates.length, 1);
 
@@ -207,11 +206,19 @@ test("render reads cached geometry and frame batching sleeps when idle", () => {
   h.scenes.render(1800);
   assert.equal(h.progress(), "0.5000");
   h.engineFrame()(2000);
+  assert.equal(h.progress(), "0.6250");
   h.engineFrame()(2200);
-  assert.equal(h.frames.size, 1);
-  h.step();
   assert.equal(h.progress(), "0.7500");
   assert.equal(h.frames.size, 0);
   h.step();
   assert.equal(h.frames.size, 0);
+});
+
+test("an engine frame renders scenes in that same frame, not one frame later", () => {
+  const { progress, activate, engineFrame, frames, step } = createHarness();
+  activate();
+  step();
+  engineFrame()(1800);
+  assert.equal(progress(), "0.5000");
+  assert.equal(frames.size, 0);
 });

@@ -67,7 +67,12 @@ export function createSceneSystem({ win = window, engine, headerHeight }) {
   }, { rootMargin: "100% 0px" });
   const resizeObserver = new win.ResizeObserver(refresh);
   resizeObserver.observe(win.document.documentElement);
-  const unsubscribe = engine.onFrame(scheduleRender);
+  // Engine frames already run inside requestAnimationFrame: render now so scenes never trail the scroll by a frame.
+  const unsubscribe = engine.onFrame(scrollY => {
+    if (destroyed) return;
+    if (frameId !== null) { win.cancelAnimationFrame(frameId); frameId = null; }
+    render(scrollY);
+  });
   win.addEventListener("scroll", onScroll);
   win.addEventListener("resize", refresh);
 
