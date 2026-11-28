@@ -33,6 +33,13 @@ function splitWords(element) {
   walk(element);
 }
 
+/** Splits a headline for the word reveal while keeping one accessible name for screen readers. */
+function splitHeadline(element) {
+  element.setAttribute("aria-label", element.textContent.replace(/\s+/g, " ").trim());
+  splitWords(element);
+  for (const mask of element.querySelectorAll(".reveal-word")) mask.setAttribute("aria-hidden", "true");
+}
+
 export function initLandingMotion({ shell, win = window }) {
   const doc = win.document;
   const root = doc.documentElement;
@@ -40,6 +47,7 @@ export function initLandingMotion({ shell, win = window }) {
   const fineQuery = win.matchMedia("(pointer: fine) and (hover: hover)");
   const header = shell.querySelector(".landing-header");
   const hero = shell.querySelector(".landing-hero");
+  const heroMedia = shell.querySelector(".landing-hero-media");
   const success = shell.querySelector("#signup-success");
 
   const reduced = () => reducedQuery.matches;
@@ -81,7 +89,8 @@ export function initLandingMotion({ shell, win = window }) {
     const probe = scrollY + headerBottom + 1;
     header?.classList.toggle("landing-header-on-dark", darkRanges.some(range => probe >= range.top && probe < range.bottom));
     if (reduced()) return;
-    shell.style.setProperty("--hero-p", clamp(scrollY / heroHeight, 0, 1).toFixed(4));
+    // Written on the film card itself: a custom property on the shell would restyle the whole page.
+    heroMedia?.style.setProperty("--hero-p", clamp(scrollY / heroHeight, 0, 1).toFixed(4));
     const viewportCenter = scrollY + win.innerHeight / 2;
     for (const layer of depthLayers) {
       const offset = clamp((viewportCenter - layer.center) * (1 - layer.depth), -MAX_DEPTH_TRAVEL, MAX_DEPTH_TRAVEL);
@@ -114,7 +123,7 @@ export function initLandingMotion({ shell, win = window }) {
   function startReveals() {
     if (reduced() || revealObserver) return;
     for (const element of shell.querySelectorAll('[data-reveal="words"]:not([data-split])')) {
-      splitWords(element);
+      splitHeadline(element);
       element.dataset.split = "";
     }
     revealObserver = new win.IntersectionObserver(entries => {
@@ -134,7 +143,7 @@ export function initLandingMotion({ shell, win = window }) {
     revealObserver = null;
     for (const element of shell.querySelectorAll("[data-reveal]")) element.classList.add("is-revealed");
     for (const { element } of depthLayers) element.style.removeProperty("--depth-y");
-    shell.style.removeProperty("--hero-p");
+    heroMedia?.style.removeProperty("--hero-p");
   }
 
   function onPreferenceChange() {
@@ -144,37 +153,56 @@ export function initLandingMotion({ shell, win = window }) {
     measure();
   }
 
-  // Measuring writes --landing-header-h, which can resize the page: defer it out of the observer callback.
   let measureFrame = null;
-  const resizeObserver = new win.ResizeObserver(() => {
-    if (measureFrame !== null) return;
-    measureFrame = win.requestAnimationFrame(() => {
-      measureFrame = null;
-      measure();
-    });
-  });
-  resizeObserver.observe(doc.documentElement);
-  if (header) resizeObserver.observe(header);
-  win.addEventListener("scroll", onScroll, { passive: true });
-  reducedQuery.addEventListener("change", onPreferenceChange);
-  fineQuery.addEventListener("change", onPreferenceChange);
-  cleanups.push(() => {
-    resizeObserver.disconnect();
-    win.removeEventListener("scroll", onScroll);
-    reducedQuery.removeEventListener("change", onPreferenceChange);
-    fineQuery.removeEventListener("change", onPreferenceChange);
-  });
-  if (success) {
-    const successObserver = new win.MutationObserver(syncClasses);
-    successObserver.observe(success, { attributes: true, attributeFilter: ["hidden"] });
-    cleanups.push(() => successObserver.disconnect());
+  function destroy() {
+    engine.stop();
+    stopMotionLayers();
+    for (const cleanup of cleanups) cleanup();
+    if (frameId !== null) win.cancelAnimationFrame(frameId);
+    if (measureFrame !== null) win.cancelAnimationFrame(measureFrame);
+    root.classList.remove("motion-engine", "motion-hold");
+    shell.classList.remove("motion-ready");
+    header?.classList.remove("landing-header-scrolled", "landing-header-on-dark");
+    delete win.__motion;
   }
 
-  engine.start();
-  syncClasses();
-  startScenes();
-  startReveals();
-  measure();
+  try {
+    // Measuring writes --landing-header-h, which can resize the page: defer it out of the observer callback.
+    const resizeObserver = new win.ResizeObserver(() => {
+      if (measureFrame !== null) return;
+      measureFrame = win.requestAnimationFrame(() => {
+        measureFrame = null;
+        measure();
+      });
+    });
+    cleanups.push(() => resizeObserver.disconnect());
+    resizeObserver.observe(doc.documentElement);
+    if (header) resizeObserver.observe(header);
+    if (success) {
+      const successObserver = new win.MutationObserver(syncClasses);
+      successObserver.observe(success, { attributes: true, attributeFilter: ["hidden"] });
+      cleanups.push(() => successObserver.disconnect());
+    }
+    // Words are split before scenes measure fit, so the measurement sees the final headline layout.
+    startReveals();
+    startScenes();
+    win.addEventListener("scroll", onScroll, { passive: true });
+    reducedQuery.addEventListener("change", onPreferenceChange);
+    fineQuery.addEventListener("change", onPreferenceChange);
+    cleanups.push(() => {
+      win.removeEventListener("scroll", onScroll);
+      reducedQuery.removeEventListener("change", onPreferenceChange);
+      fineQuery.removeEventListener("change", onPreferenceChange);
+    });
+    engine.start();
+    // Only now may motion-ready hide copy for its reveal: everything above has succeeded.
+    syncClasses();
+    scenes?.refresh();
+    measure();
+  } catch (error) {
+    destroy();
+    throw error;
+  }
 
   // Deterministic hooks for screenshots and browser tests.
   win.__motion = {
@@ -194,16 +222,6 @@ export function initLandingMotion({ shell, win = window }) {
   return {
     engineEnabled,
     scrollTo: (targetY, options) => engine.scrollTo(targetY, options),
-    destroy() {
-      engine.stop();
-      stopMotionLayers();
-      for (const cleanup of cleanups) cleanup();
-      if (frameId !== null) win.cancelAnimationFrame(frameId);
-      if (measureFrame !== null) win.cancelAnimationFrame(measureFrame);
-      root.classList.remove("motion-engine", "motion-hold");
-      shell.classList.remove("motion-ready");
-      header?.classList.remove("landing-header-scrolled", "landing-header-on-dark");
-      delete win.__motion;
-    }
+    destroy
   };
 }

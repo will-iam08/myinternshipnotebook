@@ -2491,9 +2491,21 @@ function isLandingGated() {
 // Scroll engine and scenes for the welcome page; created while it shows and torn down when it hides.
 let landingMotion = null;
 
+let landingMotionFailed = false;
+
 function syncLandingMotion(gated) {
-  if (gated && landingShell && !landingMotion) landingMotion = initLandingMotion({ shell: landingShell });
-  else if (!gated && landingMotion) { landingMotion.destroy(); landingMotion = null; }
+  if (gated && landingShell && !landingMotion && !landingMotionFailed) {
+    // Motion is an enhancement: if it cannot start (a missing browser API, a bug), keep the static page.
+    try {
+      landingMotion = initLandingMotion({ shell: landingShell });
+    } catch (error) {
+      landingMotionFailed = true;
+      console.warn("Welcome page motion is off:", error);
+    }
+  } else if (!gated && landingMotion) {
+    landingMotion.destroy();
+    landingMotion = null;
+  }
 }
 
 function syncShellVisibility() {

@@ -220,3 +220,51 @@ test("the header turns dark while a dark scene sits under it", async ({ page }, 
   await sceneProgressAt(page, "clipper", 0.5);
   await expect(header).not.toHaveClass(/landing-header-on-dark/);
 });
+
+test.describe("final review fixes", () => {
+  test("if the motion layer cannot start, the page stays readable and nothing throws", async ({ page }) => {
+    await page.addInitScript(() => { delete window.ResizeObserver; });
+    await openWelcome(page);
+    await expect(page.locator("#landing-shell")).not.toHaveClass(/motion-ready/);
+    await expect(page.locator("html")).not.toHaveClass(/motion-engine/);
+    await expect(page).toHaveTitle("My Internship Notebook");
+    const title = page.locator('[data-scene="clipper"] .feature-title');
+    await title.scrollIntoViewIfNeeded();
+    expect(await title.evaluate(el => getComputedStyle(el).opacity)).toBe("1");
+    expect(await page.locator('[data-scene="clipper"] .feature-description').evaluate(el => getComputedStyle(el).opacity)).toBe("1");
+  });
+
+  test("hero hand-off progress is written only where it is read", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop-chromium", "Desktop layout");
+    await openWelcome(page);
+    await page.evaluate(async () => {
+      window.scrollTo({ top: 200, behavior: "instant" });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    expect(await page.locator("#landing-shell").evaluate(el => el.style.getPropertyValue("--hero-p"))).toBe("");
+    expect(Number(await page.locator(".landing-hero-media").evaluate(el => el.style.getPropertyValue("--hero-p")))).toBeGreaterThan(0);
+  });
+
+  test("scenes pin on a 1280x720 laptop screen", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop-chromium", "Desktop layout");
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openWelcome(page);
+    for (const id of SCENES) await expect(page.locator(`[data-scene="${id}"]`)).toHaveAttribute("data-pinned", "true");
+  });
+
+  test("an unpinned scene waits at its start until it enters view, so it never plays backwards", async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 400 });
+    await openWelcome(page);
+    const stage = page.locator('[data-scene="insights"] [data-scene-stage]');
+    await expect(page.locator('[data-scene="insights"]')).toHaveAttribute("data-pinned", "false");
+    expect((await stage.evaluate(el => getComputedStyle(el).getPropertyValue("--p"))).trim()).toBe("0");
+  });
+
+  test("split headlines keep one accessible name and hide the word masks", async ({ page }) => {
+    await openWelcome(page);
+    const hero = page.locator("#hero-title");
+    await expect(hero).toHaveAttribute("aria-label", "Every internship application, one calm notebook.");
+    await expect(hero).toHaveAccessibleName("Every internship application, one calm notebook.");
+    expect(await hero.locator(".reveal-word").first().getAttribute("aria-hidden")).toBe("true");
+  });
+});

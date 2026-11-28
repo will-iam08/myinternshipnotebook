@@ -38,6 +38,7 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
     frameId = null;
     glide = null;
     lastWritten = current = target = scrollY;
+    lastTime = undefined;
   }
 
   function resync() {
@@ -63,7 +64,9 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
       return;
     }
 
-    const dt = now - lastTime;
+    // Wheel events run just before a frame's callbacks, whose timestamp is the frame start: the
+    // first dt of a gesture can be zero or negative, so treat it as one 60 Hz frame.
+    const dt = lastTime === undefined || now <= lastTime ? 1000 / 60 : now - lastTime;
     lastTime = now;
     let settled;
     if (glide) {
@@ -86,7 +89,6 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
 
   function requestFrame() {
     if (frameId !== null) return;
-    lastTime = win.performance.now();
     frameId = win.requestAnimationFrame(frame);
   }
 
@@ -101,7 +103,11 @@ export function createScrollEngine({ win = window, lambda = 9, isEnabled = () =>
     if (!Number.isFinite(delta) || delta === 0 ||
         (delta < 0 && win.scrollY <= 0) || (delta > 0 && win.scrollY >= max)) return;
     const nextTarget = clamp(target + delta, 0, max);
-    if (nextTarget === target) return;
+    if (nextTarget === target) {
+      // Still gliding to the end: keep the event, or the browser jumps natively and resets the glide.
+      if (frameId !== null) event.preventDefault();
+      return;
+    }
     event.preventDefault();
     target = nextTarget;
     requestFrame();

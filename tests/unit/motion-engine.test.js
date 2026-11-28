@@ -166,10 +166,11 @@ test("scrollTo glides with expo-out and a wheel interrupts it", () => {
   const { win, engine, wheel, listeners, step, settle } = createHarness();
   engine.scrollTo(1024, { duration: 400 });
   for (let i = 0; i < 4; i++) step(50);
-  assert.equal(win.scrollY, 992);
+  // The first frame counts as one 60 Hz frame, then three 50 ms frames: 166.7 ms of 400 ms.
+  assert.equal(win.scrollY, 967);
   assert.equal(wheel(100), true);
   settle();
-  assert.equal(win.scrollY, 1092);
+  assert.equal(win.scrollY, 1067); // the wheel adds 100 to where the glide was interrupted
 
   for (const type of ["keydown", "pointerdown"]) {
     engine.scrollTo(2000, { duration: 400 });
@@ -352,4 +353,23 @@ test("hidden overflow and nested scroll edges hand wheel to the page", () => {
   assert.equal(h.wheel(-50, { target: scroller }), true);
   h.settle();
   assert.equal(h.win.scrollY, 50);
+});
+
+test("momentum that arrives after the target reaches the page end keeps gliding to the end", () => {
+  const h = createHarness();
+  h.win.scrollY = 9000;
+  assert.equal(h.wheel(150), true);
+  h.step();
+  assert.equal(h.wheel(150), true);
+  h.step();
+  assert.equal(h.wheel(150), true, "an event at the clamped end must not fall through to a native jump mid-glide");
+  h.settle();
+  assert.equal(h.win.scrollY, 9200);
+});
+
+test("the first frame of a gesture moves the page even when its timestamp predates the wheel event", () => {
+  const h = createHarness();
+  h.wheel(300);
+  h.step(-3);
+  assert.ok(h.win.scrollY > 0, `first frame stayed at ${h.win.scrollY}`);
 });

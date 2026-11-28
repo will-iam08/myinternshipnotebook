@@ -3458,10 +3458,13 @@ html:has(#landing-shell:not([hidden])):not(.motion-engine) {
 }
 :is(.scene[data-canvas="dark"], :root[data-theme="dark"] .scene) > [data-scene-stage]::before { opacity: .09; }
 .motion-ready .scene[data-pinned="true"] { height: calc(var(--scene-length) * var(--length-scale, 1)); }
+/* One padding for pinned and unpinned stages, so the fit check measures what a pinned stage needs. */
+.motion-ready .scene > [data-scene-stage] { padding-block: var(--space-5); }
+/* An unpinned scene rests at its first frame until it enters view, then plays forward once. */
+.motion-ready .scene[data-pinned="false"] > [data-scene-stage] { --p: 0; }
 .motion-ready .scene[data-pinned="true"] > [data-scene-stage] {
   height: calc(100vh - var(--landing-header-h, 72px));
   height: calc(100svh - var(--landing-header-h, 72px));
-  padding-block: var(--space-5);
   position: sticky;
   top: var(--landing-header-h, 72px);
 }
