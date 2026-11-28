@@ -162,6 +162,120 @@ test.describe("vertical scroll order and semantic landmarks", () => {
   });
 });
 
+test.describe("phone header and navigation drawer", () => {
+  const toggle = page => page.locator("#landing-menu-toggle");
+  const drawer = page => page.locator("#landing-nav-drawer");
+
+  for (const width of [320, 390, 767]) {
+    test(`stays one row of about 56px at ${width}px with the links folded into the drawer`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openWelcome(page);
+      const header = page.locator(".landing-header");
+      const box = await header.boundingBox();
+      expect(box.height, `header height at ${width}px`).toBeLessThanOrEqual(60);
+
+      const brand = page.locator(".landing-brand");
+      const signIn = page.locator(".landing-nav-signin");
+      for (const control of [brand, signIn, toggle(page)]) await expect(control).toBeVisible();
+      await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+      await expect(drawer(page)).toBeHidden();
+
+      // Every visible header control sits inside the header's single row.
+      const rows = await page.locator(".landing-header :is(a, button):visible").evaluateAll(nodes =>
+        nodes.map(node => { const rect = node.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom }; })
+      );
+      for (const row of rows) {
+        expect(row.top).toBeGreaterThanOrEqual(box.y - 1);
+        expect(row.bottom).toBeLessThanOrEqual(box.y + box.height + 1);
+      }
+
+      await toggle(page).click();
+      await expect(drawer(page)).toBeVisible();
+      // The drawer floats over the page: the header (and --landing-header-h) keep their height.
+      expect((await header.boundingBox()).height).toBeCloseTo(box.height, 0);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
+      const drawerBox = await drawer(page).boundingBox();
+      expect(drawerBox.x).toBeGreaterThanOrEqual(0);
+      expect(drawerBox.x + drawerBox.width).toBeLessThanOrEqual(width);
+    });
+  }
+
+  test("opens by touch, and a link closes it, scrolls to its section and moves focus there", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "iphone-webkit", "Touch profile only");
+    await openWelcome(page);
+    await toggle(page).tap();
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+    const links = drawer(page).locator(".landing-nav-link");
+    await expect(links).toHaveText(["Overview", "Features", "Create Account"]);
+
+    // A tap outside closes it.
+    await page.locator("#hero-title").tap();
+    await expect(drawer(page)).toBeHidden();
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+
+    await toggle(page).tap();
+    await links.filter({ hasText: "Features" }).tap();
+    await expect(drawer(page)).toBeHidden();
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator("#features")).toBeFocused();
+    await expect(page.locator("#features")).toBeInViewport();
+    await expect(page).toHaveURL(/#features$/);
+
+    await toggle(page).tap();
+    await links.filter({ hasText: "Create Account" }).tap();
+    await expect(page.locator("#signup-name")).toBeFocused();
+    await expect(page.locator("#signup")).toBeInViewport();
+  });
+
+  test("works from the keyboard: focus moves into the drawer, Escape returns it, Tab past the end closes it", async ({ page }, testInfo) => {
+    // WebKit's default Tab order skips links, so the Tab walk runs in Chromium at a phone width.
+    test.skip(testInfo.project.name !== "desktop-chromium", "Keyboard Tab order checked in Chromium");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWelcome(page);
+    await toggle(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+    const links = drawer(page).locator(".landing-nav-link");
+    await expect(links.first()).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(drawer(page)).toBeHidden();
+    await expect(toggle(page)).toBeFocused();
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+
+    await page.keyboard.press("Space");
+    await expect(links.first()).toBeFocused();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await expect(links.last()).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(drawer(page)).toBeHidden();
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+
+    // Enter on a drawer link keeps the links' focus rules.
+    await toggle(page).focus();
+    await page.keyboard.press("Enter");
+    await links.filter({ hasText: "Features" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(drawer(page)).toBeHidden();
+    await expect(page.locator("#features")).toBeFocused();
+  });
+
+  test("the desktop header keeps its inline links and has no menu button", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop-chromium", "Desktop layout only");
+    await openWelcome(page);
+    await expect(toggle(page)).toBeHidden();
+    const links = page.locator(".landing-nav .landing-nav-link");
+    await expect(links).toHaveText(["Overview", "Features", "Create Account", "Sign In"]);
+    for (const link of await links.all()) await expect(link).toBeVisible();
+    await expect(page.locator(".landing-brand-copy")).toBeVisible();
+    const tops = await links.evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top)));
+    expect(new Set(tops).size).toBe(1);
+    expect((await page.locator(".landing-header").boundingBox()).height).toBeGreaterThanOrEqual(72);
+  });
+});
+
 test.describe("1. Hero section", () => {
   test("fills viewport height, displays <=60 char H1 and <=180 char value prop, and embeds a 16:9 muted loop video that starts after the page has loaded", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
