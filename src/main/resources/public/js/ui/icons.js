@@ -24,6 +24,7 @@ export const ICONS = {
   download: '<path d="M12 3.5v11M7 10l5 5 5-5M4 16.5V19a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-2.5"/>',
   upload: '<path d="M12 15V4M7 8.5l5-5 5 5M4 16.5V19a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-2.5"/>',
   lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   more: '<circle cx="5.5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="18.5" cy="12" r="1.2" fill="currentColor"/>',
   move: '<path d="M16 3.5 20 7.5l-4 4M20 7.5H5M8 20.5l-4-4 4-4M4 16.5h15"/>',
   select: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m8 12 3 3 5-6"/>',

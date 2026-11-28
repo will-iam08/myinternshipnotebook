@@ -4087,8 +4087,56 @@ function markHeroVideoFailed(video) {
   frame.classList.remove("is-playing");
 }
 
+// Phone header (below 768px): Overview / Features / Create Account fold into a small drawer behind a
+// menu button, so the sticky header stays one row. The links keep their usual click handling below.
+function initLandingNavMenu() {
+  const header = $(".landing-header", landingShell);
+  const toggle = $("#landing-menu-toggle", landingShell);
+  const drawer = $("#landing-nav-drawer", landingShell);
+  if (!header || !toggle || !drawer) return;
+  const phoneQuery = window.matchMedia("(max-width: 767px)");
+  const isOpen = () => drawer.classList.contains("is-open");
+  const setOpen = open => {
+    drawer.classList.toggle("is-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+  };
+  const close = ({ returnFocus = false } = {}) => {
+    if (!isOpen()) return;
+    setOpen(false);
+    if (returnFocus) toggle.focus();
+  };
+
+  toggle.hidden = false;
+  header.dataset.navMenu = "";
+  toggle.addEventListener("click", () => {
+    if (isOpen()) { close(); return; }
+    setOpen(true);
+    $("a", drawer)?.focus();
+  });
+  header.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || !isOpen()) return;
+    event.preventDefault();
+    close({ returnFocus: true });
+  });
+  // Tabbing past the last link (or back before the first) closes the drawer.
+  header.addEventListener("focusout", event => {
+    const next = event.relatedTarget;
+    if (next && next !== toggle && !drawer.contains(next)) close();
+  });
+  // A link inside closes the drawer; the shell's click handler then scrolls and moves focus as usual.
+  drawer.addEventListener("click", event => {
+    if (event.target.closest("a")) close();
+  });
+  document.addEventListener("click", event => {
+    if (isOpen() && !drawer.contains(event.target) && !toggle.contains(event.target)) close();
+  });
+  phoneQuery.addEventListener("change", () => close());
+}
+
 function initLandingPage() {
   if (!landingShell) return;
+
+  initLandingNavMenu();
 
   const HERO_CHAPTERS = [0, 5, 10, 15, 20, 25];
   const chapterPills = $$(".hero-workflow-pill", landingShell);

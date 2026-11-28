@@ -66,12 +66,18 @@
             </span>
           </a>
           <nav class="landing-nav" aria-label="Landing page navigation">
-            <a class="landing-nav-link" href="#hero" data-scroll-to="hero">Overview</a>
-            <a class="landing-nav-link" href="#features" data-scroll-to="features">Features</a>
-            <a class="landing-nav-link" href="#signup" data-scroll-to="signup" data-auth-mode-trigger="signup">Create Account</a>
+            <!-- Below 768px these links fold into a drawer opened by the menu button; on wider screens the wrapper is display: contents. -->
+            <div class="landing-nav-drawer" id="landing-nav-drawer">
+              <a class="landing-nav-link" href="#hero" data-scroll-to="hero">Overview</a>
+              <a class="landing-nav-link" href="#features" data-scroll-to="features">Features</a>
+              <a class="landing-nav-link" href="#signup" data-scroll-to="signup" data-auth-mode-trigger="signup">Create Account</a>
+            </div>
             <a class="landing-nav-link landing-nav-signin" href="#signup" data-scroll-to="signup" data-auth-mode-trigger="signin">Sign In</a>
             <button class="icon-button landing-theme-toggle" type="button" data-action="cycle-theme" aria-label="Change theme" title="Change theme">
               <span data-theme-icon></span>
+            </button>
+            <button class="icon-button landing-menu-toggle" id="landing-menu-toggle" type="button" aria-controls="landing-nav-drawer" aria-expanded="false" aria-label="Menu" hidden>
+              <span data-icon="menu"></span>
             </button>
           </nav>
         </div>
